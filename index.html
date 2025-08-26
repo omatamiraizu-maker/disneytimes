@@ -297,6 +297,94 @@
             }
         }
         
+        // アトラクション名を日本語に変換
+        function translateAttractionName(englishName) {
+            const translations = {
+                // 東京ディズニーランド
+                '"it\'s a small world"': 'イッツ・ア・スモールワールド',
+                'Alice\'s Tea Party': 'アリスのティーパーティー',
+                'Beaver Brothers Explorer Canoes': 'ビーバーブラザーズのカヌー探険',
+                'Big Thunder Mountain': 'ビッグサンダー・マウンテン',
+                'Castle Carrousel': 'キャッスルカルーセル',
+                'Chip \'n Dale\'s Treehouse': 'チップとデールのツリーハウス',
+                'Cinderella\'s Fairy Tale Hall': 'シンデレラのフェアリーテイル・ホール',
+                'Country Bear Theater': 'カントリーベア・シアター',
+                'Donald\'s Boat': 'ドナルドのボート',
+                'Dumbo The Flying Elephant': 'ダンボ',
+                'Enchanted Tale of Beauty and the Beast': '美女と野獣"魔法のものがたり"',
+                'Gadget\'s Go Coaster': 'ガジェットのゴーコースター',
+                'Goofy\'s Paint \'n\' Play House': 'グーフィーのペイント&プレイハウス',
+                'Haunted Mansion': 'ホーンテッドマンション',
+                'Jungle Cruise: Wildlife Expeditions': 'ジャングルクルーズ',
+                'Mark Twain Riverboat': 'マークトウェイン号',
+                'Mickey\'s PhilharMagic': 'ミッキーのフィルハーマジック',
+                'Minnie\'s House': 'ミニーの家',
+                'Monsters, Inc. Ride & Go Seek!': 'モンスターズ・インク"ライド&ゴーシーク！"',
+                'Omnibus': 'オムニバス',
+                'Penny Arcade': 'ペニーアーケード',
+                'Peter Pan\'s Flight': 'ピーターパン空の旅',
+                'Pinocchio\'s Daring Journey': 'ピノキオの冒険旅行',
+                'Pirates of the Caribbean': 'カリブの海賊',
+                'Pooh\'s Hunny Hunt': 'プーさんのハニーハント',
+                'Roger Rabbit\'s Car Toon Spin': 'ロジャーラビットのカートゥーンスピン',
+                'Snow White\'s Adventures': '白雪姫と七人のこびと',
+                'Splash Mountain': 'スプラッシュ・マウンテン',
+                'Star Tours: The Adventures Continue': 'スター・ツアーズ',
+                'Stitch Encounter': 'スティッチ・エンカウンター',
+                'Swiss Family Treehouse': 'スイスファミリー・ツリーハウス',
+                'The Enchanted Tiki Room: Stitch Presents "Aloha E Komo Mai!"': '魅惑のチキルーム',
+                'The Happy Ride with Baymax': 'ベイマックスのハッピーライド',
+                'Tom Sawyer Island Rafts': 'トムソーヤ島いかだ',
+                'Toon Park': 'トゥーンパーク',
+                'Western River Railroad': 'ウエスタンリバー鉄道',
+                'Westernland Shootin\' Gallery': 'ウエスタンランド・シューティングギャラリー',
+                'Space Mountain': 'スペース・マウンテン',
+                'Buzz Lightyear\'s Astro Blasters': 'バズ・ライトイヤーのアストロブラスター',
+                
+                // 東京ディズニーシー
+                'Soaring: Fantastic Flight': 'ソアリン：ファンタスティック・フライト',
+                'Toy Story Mania!': 'トイ・ストーリー・マニア！',
+                'Tower of Terror': 'タワー・オブ・テラー',
+                'Journey to the Center of the Earth': 'センター・オブ・ジ・アース',
+                'Indiana Jones Adventure: Temple of the Crystal Skull': 'インディ・ジョーンズ・アドベンチャー',
+                'Raging Spirits': 'レイジングスピリッツ',
+                '20,000 Leagues Under the Sea': '海底2万マイル',
+                'The Magic Lamp Theater': 'マジックランプシアター',
+                'Venetian Gondolas': 'ヴェネツィアン・ゴンドラ',
+                'Fortress Explorations': 'フォートレス・エクスプロレーション',
+                'DisneySea Electric Railway': 'ディズニーシー・エレクトリックレールウェイ',
+                'DisneySea Transit Steamer Line': 'ディズニーシー・トランジットスチーマーライン',
+                'Aquatopia': 'アクアトピア',
+                'Nemo & Friends SeaRider': 'ニモ&フレンズ・シーライダー',
+                'Flounder\'s Flying Fish Coaster': 'フランダーのフライングフィッシュコースター',
+                'Scuttle\'s Scooters': 'スカットルのスクーター',
+                'Blowfish Balloon Race': 'ブローフィッシュ・バルーンレース',
+                'The Whirlpool': 'ワールプール',
+                'Ariel\'s Playground': 'アリエルのプレイグラウンド',
+                'Jumpin\' Jellyfish': 'ジャンピン・ジェリーフィッシュ',
+                'Sindbad\'s Storybook Voyage': 'シンドバッド・ストーリーブック・ヴォヤッジ',
+                'Caravan Carousel': 'キャラバンカルーセル',
+                'Jasmine\'s Flying Carpets': 'ジャスミンのフライングカーペット',
+                'Magic Lamp Theater': 'マジックランプシアター',
+                'Turtle Talk': 'タートル・トーク',
+                'DisneySea Transit Steamer Line (Lost River Delta)': 'トランジットスチーマーライン（ロストリバーデルタ）',
+                'DisneySea Transit Steamer Line (Mediterranean Harbor)': 'トランジットスチーマーライン（メディテレーニアンハーバー）',
+                'DisneySea Transit Steamer Line (American Waterfront)': 'トランジットスチーマーライン（アメリカンウォーターフロント）',
+                
+                // ファンタジースプリングス（新エリア）
+                'Peter Pan\'s Never Land Adventure': 'ピーターパンのネバーランドアドベンチャー',
+                'Fairy Tinker Bell\'s Busy Buggies': 'フェアリー・ティンカーベルのビジービューギー',
+                'Rapunzel\'s Lantern Festival': 'ラプンツェルのランタンフェスティバル',
+                'Anna and Elsa\'s Frozen Journey': 'アナとエルサのフローズンジャーニー'
+            };
+            
+            // 特殊な引用符を標準化
+            const normalizedName = englishName.replace(/[""]/g, '"').replace(/['']/g, '\'');
+            
+            // 翻訳が存在する場合は日本語名を返す、なければ元の名前を返す
+            return translations[normalizedName] || normalizedName;
+        }
+        
         // データ取得
         async function fetchParkData(park) {
             const content = document.getElementById('content');
@@ -333,7 +421,7 @@
                 // ridesから直接取得（東京ディズニーランドの場合）
                 if (data.rides && Array.isArray(data.rides) && data.rides.length > 0) {
                     attractions = data.rides.map(ride => ({
-                        name: ride.name.replace(/[""]/g, ''), // 特殊な引用符を除去
+                        name: translateAttractionName(ride.name),
                         waitTime: ride.wait_time || 0,
                         isOpen: ride.is_open === true,
                         landName: 'パーク内'
@@ -343,7 +431,7 @@
                 else if (data.lands && Array.isArray(data.lands) && data.lands.length > 0) {
                     attractions = data.lands.flatMap(land => 
                         (land.rides || []).map(ride => ({
-                            name: ride.name.replace(/[""]/g, ''),
+                            name: translateAttractionName(ride.name),
                             waitTime: ride.wait_time || 0,
                             isOpen: ride.is_open === true,
                             landName: land.name || 'パーク内'
@@ -381,7 +469,7 @@
                         let attractions = [];
                         if (data.rides && data.rides.length > 0) {
                             attractions = data.rides.map(ride => ({
-                                name: ride.name.replace(/[""]/g, ''),
+                                name: translateAttractionName(ride.name),
                                 waitTime: ride.wait_time || 0,
                                 isOpen: ride.is_open === true,
                                 landName: 'パーク内'
@@ -389,7 +477,7 @@
                         } else if (data.lands && data.lands.length > 0) {
                             attractions = data.lands.flatMap(land => 
                                 (land.rides || []).map(ride => ({
-                                    name: ride.name.replace(/[""]/g, ''),
+                                    name: translateAttractionName(ride.name),
                                     waitTime: ride.wait_time || 0,
                                     isOpen: ride.is_open === true,
                                     landName: land.name || 'パーク内'
