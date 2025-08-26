@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>東京ディズニーリゾート 待ち時間チェッカー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            animation: fadeIn 0.8s ease;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .last-update {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .park-selector {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+            animation: slideDown 0.6s ease;
+        }
+
+        .park-btn {
+            padding: 12px 30px;
+            border: none;
+            background: white;
+            color: #667eea;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .park-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .park-btn.active {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .refresh-btn {
+            padding: 10px 20px;
+            background: #4ade80;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .refresh-btn:hover {
+            background: #22c55e;
+            transform: scale(1.05);
+        }
+
+        .refresh-btn:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: scale(1);
+        }
+
+        .attractions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            animation: fadeIn 0.8s ease;
+        }
+
+        .attraction-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            animation: slideUp 0.6s ease;
+        }
+
+        .attraction-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+
+        .attraction-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2d3436;
+            margin-bottom: 15px;
+        }
+
+        .wait-time {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .wait-time-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .wait-time-unit {
+            font-size: 0.9rem;
+            color: #636e72;
+        }
+
+        .status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .status.operating {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status.closed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status.breakdown {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50oney 20px;
+            color: white;
+        }
+
+        .loading-spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .cors-info {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 0.9rem;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .park-selector {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .park-btn {
+                width: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏰 東京ディズニーリゾート 待ち時間チェッカー</h1>
+            <div class="last-update">最終更新: <span id="lastUpdate">-</span></div>
+            <div style="margin-top: 10px; font-size: 0.8rem; opacity: 0.8;">
+                Powered by <a href="https://queue-times.com/" target="_blank" style="color: white; text-decoration: underline;">Queue-Times.com</a>
+            </div>
+        </header>
+
+        <div class="park-selector">
+            <button class="park-btn active" onclick="selectPark('land')">東京ディズニーランド</button>
+            <button class="park-btn" onclick="selectPark('sea')">東京ディズニーシー</button>
+            <button class="refresh-btn" onclick="refreshData()" id="refreshBtn">🔄 更新</button>
+        </div>
+
+        <div class="cors-info" id="corsInfo" style="display: none;">
+            ⚠️ CORSエラーが発生した場合：ブラウザの拡張機能「CORS Unblock」等を使用するか、
+            Netlify Functionsでプロキシサーバーを設定してください。
+        </div>
+
+        <div id="content">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>待ち時間データを取得中...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // グローバル変数
+        let currentPark = 'land';
+        let attractionsData = {
+            land: [],
+            sea: []
+        };
+
+        // パーク選択
+        function selectPark(park) {
+            currentPark = park;
+
+            // ボタンのアクティブ状態を更新
+            document.querySelectorAll('.park-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // データが既にある場合は表示、なければ取得
+            if (attractionsData[park].length > 0) {
+                displayAttractions(attractionsData[park]);
+            } else {
+                fetchParkData(park);
+            }
+        }
+
+        // データ取得
+        async function fetchParkData(park) {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>待ち時間データを取得中...</p>
+                </div>
+            `;
+
+            // Queue-Times API のエンドポイント
+            const parkId = park === 'land' ? '274' : '275'; // 東京ディズニーランド: 274, シー: 275
+
+            const apiUrl = `/.netlify/functions/queue-times?parkId=${parkId}`;
+
+            try {
+                const response = await fetch(apiUrl);
+
+                if (!response.ok) {
+                    throw new Error('データの取得に失敗しました');
+                }
+
+                const data = await response.json();
+
+                // データを整形
+                const attractions = data.lands.flatMap(land =>
+                    land.rides.map(ride => ({
+                        name: ride.name,
+                        waitTime: ride.wait_time || 0,
+                        isOpen: ride.is_open,
+                        landName: land.name
+                    }))
+                );
+
+                // データを保存
+                attractionsData[park] = attractions;
+
+                // 表示
+                displayAttractions(attractions);
+
+                // 最終更新時刻を更新
+                updateLastUpdateTime();
+
+            } catch (error) {
+                console.error('エラー:', error);
+
+                // CORSエラーの可能性を表示
+                document.getElementById('corsInfo').style.display = 'block';
+
+                content.innerHTML = `
+                    <div class="error">
+                        <h3>⚠️ データの取得に失敗しました</h3>
+                        <p>${error.message}</p>
+                        <p style="margin-top: 10px;">
+                            CORSエラーの場合は、以下の方法をお試しください：<br>
+                            1. Chrome拡張機能「CORS Unblock」をインストール<br>
+                            2. Netlify Functionsでプロキシサーバーを構築
+                        </p>
+                    </div>
+                `;
+
+                // ダミーデータで表示（デモ用）
+                loadDemoData(park);
+            }
+        }
+
+        // アトラクション表示
+        function displayAttractions(attractions) {
+            const content = document.getElementById('content');
+
+            // 待ち時間順にソート
+            attractions.sort((a, b) => b.waitTime - a.waitTime);
+
+            const html = `
+                <div class="attractions-grid">
+                    ${attractions.map(attr => `
+                        <div class="attraction-card">
+                            <div class="attraction-name">${attr.name}</div>
+                            <div class="wait-time">
+                                <div>
+                                    <span class="wait-time-value">${attr.waitTime}</span>
+                                    <span class="wait-time-unit">分</span>
+                                </div>
+                                <div class="status ${getStatusClass(attr)}">
+                                    ${getStatusText(attr)}
+                                </div>
+                            </div>
+                            <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 10px;">
+                                📍 ${attr.landName || 'エリア情報なし'}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            content.innerHTML = html;
+        }
+
+        // ステータスクラス取得
+        function getStatusClass(attraction) {
+            if (!attraction.isOpen) return 'closed';
+            if (attraction.waitTime === 0) return 'breakdown';
+            return 'operating';
+        }
+
+        // ステータステキスト取得
+        function getStatusText(attraction) {
+            if (!attraction.isOpen) return '運営終了';
+            if (attraction.waitTime === 0) return '一時停止';
+            return '運営中';
+        }
+
+        // 最終更新時刻を更新
+        function updateLastUpdateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleString('ja-JP');
+            document.getElementById('lastUpdate').textContent = timeStr;
+        }
+
+        // データ更新
+        async function refreshData() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+
+            await fetchParkData(currentPark);
+
+            setTimeout(() => {
+                btn.disabled = false;
+            }, 2000);
+        }
+
+        // デモデータ読み込み（CORSエラー時の代替）
+        function loadDemoData(park) {
+            const demoData = {
+                land: [
+                    { name: 'スプラッシュ・マウンテン', waitTime: 75, isOpen: true, landName: 'クリッターカントリー' },
+                    { name: 'ビッグサンダー・マウンテン', waitTime: 60, isOpen: true, landName: 'ウエスタンランド' },
+                    { name: 'スペース・マウンテン', waitTime: 90, isOpen: true, landName: 'トゥモローランド' },
+                    { name: 'プーさんのハニーハント', waitTime: 85, isOpen: true, landName: 'ファンタジーランド' },
+                    { name: 'ホーンテッドマンション', waitTime: 45, isOpen: true, landName: 'ファンタジーランド' },
+                    { name: 'イッツ・ア・スモールワールド', waitTime: 30, isOpen: true, landName: 'ファンタジーランド' },
+                    { name: 'カリブの海賊', waitTime: 25, isOpen: true, landName: 'アドベンチャーランド' },
+                    { name: 'ジャングルクルーズ', waitTime: 35, isOpen: true, landName: 'アドベンチャーランド' }
+                ],
+                sea: [
+                    { name: 'トイ・ストーリー・マニア！', waitTime: 120, isOpen: true, landName: 'アメリカンウォーターフロント' },
+                    { name: 'センター・オブ・ジ・アース', waitTime: 100, isOpen: true, landName: 'ミステリアスアイランド' },
+                    { name: 'タワー・オブ・テラー', waitTime: 95, isOpen: true, landName: 'アメリカンウォーターフロント' },
+                    { name: 'インディ・ジョーンズ', waitTime: 80, isOpen: true, landName: 'ロストリバーデルタ' },
+                    { name: 'レイジングスピリッツ', waitTime: 70, isOpen: true, landName: 'ロストリバーデルタ' },
+                    { name: '海底2万マイル', waitTime: 40, isOpen: true, landName: 'ミステリアスアイランド' },
+                    { name: 'マジックランプシアター', waitTime: 20, isOpen: true, landName: 'アラビアンコースト' },
+                    { name: 'アクアトピア', waitTime: 15, isOpen: true, landName: 'ポートディスカバリー' }
+                ]
+            };
+
+            setTimeout(() => {
+                attractionsData[park] = demoData[park];
+                displayAttractions(demoData[park]);
+                updateLastUpdateTime();
+
+                document.getElementById('content').innerHTML = `
+                    <div class="cors-info" style="background: #dbeafe; color: #1e40af;">
+                        ℹ️ 現在はデモデータを表示しています。実際のデータを取得するには、CORS対策が必要です。
+                    </div>
+                ` + document.getElementById('content').innerHTML;
+            }, 1000);
+        }
+
+        // 初期化
+        window.onload = () => {
+            fetchParkData('land');
+        };
+    </script>
+</body>
+</html>
