@@ -32,7 +32,7 @@
 <body>
 <header><div class="wrap">
   <div class="row" style="justify-content:space-between">
-    <div><strong>🧭 TDR DPA & 待ち時間 通知</strong> <span class="mut"></span></div>
+    <div><strong>🧭 TDR DPA & 待ち時間 通知</strong> <span class="mut">（Netlify + Supabase）</span></div>
     <div class="row">
       <span id="userEmail" class="mut"></span>
       <button id="btnOpenLogin" class="cta">ログイン / 新規登録</button>
@@ -64,7 +64,7 @@
   <section class="g g2">
     <div class="panel">
       <h3 style="margin-top:0">⏱ 最新待ち時間</h3>
-      <div class="row"><button id="btnRefresh" class="cta">最新の待ち時間を表示</button><span class="mut">※差異が生じる場合あり</span></div>
+      <div class="row"><button id="btnRefresh" class="cta">最新の待ち時間を表示</button><span class="mut">サーバは1分ごと保存</span></div>
       <div id="qt"></div>
       <div style="margin-top:10px">
         <strong>🎯 いま行くなら（お気に入りから）</strong>
@@ -73,7 +73,7 @@
     </div>
     <div class="panel">
       <h3 style="margin-top:0">🎫 DPA / PP ステータス</h3>
-      <div class="row"><button id="btnFetchDpa" class="cta">最新を取得（約15秒かかります）</button></div>
+      <div class="row"><button id="btnFetchDpa" class="cta">最新を取得（背景で約15秒）</button></div>
       <div id="dpa"></div>
     </div>
   </section>
@@ -83,7 +83,7 @@
     <div class="row">
       <label class="pill"><input type="checkbox" id="rCloseReopen" checked> 休止/再開</label>
       <label class="pill"><input type="checkbox" id="rDpaSale" checked> DPA販売中</label>
-      <label class="pill">スパイク閾値 ±<input type="number" id="rSpike" value="20" class="w120"> 分</label>
+      <label class="pill">スパイク閾値（急変判定幅）±<input type="number" id="rSpike" value="20" class="w120"> 分</label>
       <label class="pill">DPA開始の <input type="number" id="rWindow" value="10" class="w120"> 分前に通知</label>
       <button id="btnSaveRules" class="cta">保存</button>
     </div>
@@ -101,31 +101,56 @@
   </section>
 
   <section class="panel">
-    <h3 style="margin-top:0">🧾 DPA購入管理</h3>
+    <h3 style="margin-top:0">🧾 DPA購入管理（開始→終了は自動で+1時間 / スケジュールに自動反映）</h3>
     <div class="grid3">
-      <div><label>施設</label><input id="buyName" placeholder="（候補からクリックでも入力）"></div>
+      <div><label>施設</label><input id="buyName" list="dpaNames" placeholder="（候補からクリックでも入力）"></div>
       <div><label>開始</label><input id="buyStart" type="datetime-local"></div>
       <div><label>終了</label><input id="buyEnd" type="datetime-local"></div>
       <div><label>枚数</label><input id="buyQty" type="number" value="1"></div>
       <div><label>メモ</label><input id="buyNote"></div>
       <div style="display:flex;align-items:flex-end;gap:8px">
         <button id="btnAddPurchase" class="cta">登録</button>
-        <span class="mut">※開始のN分前（通知ルール）で通知</span>
+        <span class="mut">※その日の「自動スケジュール」に即時追加されます</span>
       </div>
     </div>
     <div id="purchases"></div>
+    <div id="autoSchedLink" class="mut" style="margin-top:8px"></div>
   </section>
 
   <section class="panel">
-    <h3 style="margin-top:0">📅 手動スケジュール作成（回数指定＆簡易エリア最適化）</h3>
+    <h3 style="margin-top:0">📅 手動スケジュール作成（回数指定＆固定イベント・簡易エリア最適化）</h3>
     <div class="row">
       <label>開始時刻</label><input id="startTime" type="time" value="09:00">
       <label>徒歩/移動(分)</label><input id="walk" type="number" value="10" class="w120">
       <button id="btnPlan" class="cta">生成して保存</button>
       <span id="shareLink" class="mut"></span>
     </div>
+
+    <h4 style="margin:12px 0 6px">🎉 固定イベント（パレード/ショー）</h4>
+    <div class="grid3" style="margin-bottom:8px">
+      <div>
+        <label>名称</label>
+        <input id="evName" list="paradeNames" placeholder="例：デイ・パレード">
+      </div>
+      <div>
+        <label>開始</label>
+        <input id="evStart" type="datetime-local">
+      </div>
+      <div>
+        <label>所要(分)</label>
+        <input id="evDur" type="number" value="30">
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button id="btnAddEvent" class="cta">追加</button>
+        <span class="mut">※固定イベントはこの時間を優先。待ち時間計算は使いません。</span>
+      </div>
+    </div>
+    <div id="eventsList"></div>
+
+    <h4 style="margin:12px 0 6px">🔢 回数指定（★が対象）</h4>
     <div id="counts"></div>
-    <div id="planOut" class="plan"></div>
+
+    <div id="planOut" class="plan" style="margin-top:10px"></div>
   </section>
 
   <section class="panel">
@@ -133,6 +158,10 @@
     <div id="feed"></div>
   </section>
 </main>
+
+<!-- datalist（候補） -->
+<datalist id="dpaNames"></datalist>
+<datalist id="paradeNames"></datalist>
 
 <!-- ログインモーダル -->
 <div class="modal" id="loginModal">
@@ -193,12 +222,14 @@ async function refreshAuthUI(){
 }
 await refreshAuthUI(); supabase.auth.onAuthStateChange(refreshAuthUI);
 
-// ===== 共通 =====
+// ===== 共通ヘルパ =====
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
 const dpaDiv = document.getElementById('dpa');
 const feedDiv = document.getElementById('feed');
 const nowTipsDiv = document.getElementById('nowTips');
+const shareLink=document.getElementById('shareLink');
+const autoSchedLink=document.getElementById('autoSchedLink');
 
 const fDpaOnly = document.getElementById('fDpaOnly');
 const fKids = document.getElementById('fKids');
@@ -222,34 +253,49 @@ const buyNote=document.getElementById('buyNote');
 
 const planOut=document.getElementById('planOut');
 const countsDiv=document.getElementById('counts');
-const shareLink=document.getElementById('shareLink');
 
-const state={ favorites:new Set(), qt:[], dpa:[], rules:null, purchases:[] };
+const evName = document.getElementById('evName');
+const evStart = document.getElementById('evStart');
+const evDur = document.getElementById('evDur');
+const btnAddEvent = document.getElementById('btnAddEvent');
+const eventsList = document.getElementById('eventsList');
+
+const state={
+  favorites:new Set(), qt:[], dpa:[], rules:null, purchases:[],
+  parades:[],
+  fixedManual:[],   // 手動追加の固定イベント
+  fixedAuto:[]      // 自動（DPA購入→固定イベント化）
+};
 const AREA_MAP={
   274:{ "ビッグサンダー・マウンテン":"ウエスタンランド","スプラッシュ・マウンテン":"クリッターカントリー","スペース・マウンテン":"トゥモローランド","プーさんのハニーハント":"ファンタジーランド","ホーンテッドマンション":"ファンタジーランド" },
   275:{ "ソアリン：ファンタスティック・フライト":"メディテレーニアンハーバー","トイ・ストーリー・マニア！":"アメリカンウォーターフロント","センター・オブ・ジ・アース":"ミステリアスアイランド","タワー・オブ・テラー":"アメリカンウォーターフロント" }
-}; // 未登録は "?" 扱い
+};
 
 function el(tag, attrs={}, children=[]){ const e=document.createElement(tag); for(const[k,v] of Object.entries(attrs)){ if(k==='class') e.className=v; else if(k.startsWith('on')) e.addEventListener(k.slice(2),v); else e.setAttribute(k,v); } for(const c of (Array.isArray(children)?children:[children])) e.appendChild(typeof c==='string'?document.createTextNode(c):c); return e; }
+function fmtLocal(dt){ const pad=n=>String(n).padStart(2,'0'); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+function areaOf(nameJa){ return AREA_MAP[parkSel.value]?.[nameJa] || '?'; }
 
-// ===== 最新待ち時間（日本語ビュー） =====
+// ===== DPA購入：開始→終了+1h 自動入力 =====
+buyStart.addEventListener('change', ()=>{
+  if(!buyStart.value) return;
+  const s = new Date(buyStart.value);
+  const e = new Date(s.getTime() + 60*60000);
+  buyEnd.value = fmtLocal(e);
+});
+
+// ===== 待ち時間（日本語ビュー） =====
 async function loadQT(){
   const parkId=parseInt(parkSel.value,10);
   const { data, error } = await supabase.from('v_queue_times_latest').select('name_ja,name_raw,is_open,wait_time,fetched_at').eq('park_id',parkId).limit(600);
   if (error){ qtDiv.textContent=error.message; return; }
-  state.qt = (data||[]).map(r=>({
-    nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at
-  }));
-  renderQT();
-  renderCountsEditor(); // 手動スケジュール用の回数UI
-  renderNowTips();
+  state.qt = (data||[]).map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
+  renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList();
 }
 function applyFilters(list){
   let out=list.slice(0);
-  if (fKids.checked){ out = out.filter(x=> /カルーセル|ダンボ|スモール|ジュニア|バギー|ティンカ|ゴーコースター|ビジーバギー/i.test(x.nameJa)); }
+  if (fKids.checked){ out = out.filter(x=> /カルーセル|ダンボ|スモール|バギー|ティンカ|ゴーコースター|メリー|キャラバン/i.test(x.nameJa)); }
   if (Number(fMaxWait.value) < 999){ out = out.filter(x=> (x.wait??999) <= Number(fMaxWait.value)); }
   if (fDpaOnly.checked){
-    // DPA対象の判定：最新DPA表（state.dpa）から該当するものを抽出
     const dpaSet=new Set(state.dpa.filter(d=>d.dpa_status==='販売中'||d.dpa_status==='要確認（記載あり）').map(d=>d.name));
     out = out.filter(x=> dpaSet.has(x.nameJa));
   }
@@ -269,42 +315,34 @@ function renderQT(){
         el('td',{}, r.nameJa),
         el('td',{}, el('span',{class:'mono'}, (r.wait??'-').toString())),
         el('td',{}, r.open?el('span',{class:'good'},'運営中'):el('span',{class:'bad'},'休止')),
-        el('td',{}, el('span',{class:'mut', id:`pred-${r.nameRaw}`} , '…'))
+        el('td',{}, el('span',{class:'mut', id:`pred-${r.nameRaw}`}, fav?'…':'-'))
       ]);
-      // 予測APIで中央値を取得（軽量化のためお気に入りのみ）
-      if (fav) fetch(`/.netlify/functions/qt-stats?park=${parkSel.value}&name=${encodeURIComponent(r.nameRaw)}`).then(r=>r.json()).then(j=>{
-        const elp=document.getElementById(`pred-${r.nameRaw}`); if (elp) elp.textContent = j?.median!=null ? `${j.median} 分 (${j.n})` : '-';
-      }).catch(()=>{});
+      if (fav) fetch(`/.netlify/functions/qt-stats?park=${parkSel.value}&name=${encodeURIComponent(r.nameRaw)}`)
+        .then(r=>r.json()).then(j=>{ const elp=document.getElementById(`pred-${r.nameRaw}`); if (elp) elp.textContent = j?.median!=null ? `${j.median} 分 (${j.n})` : '-'; })
+        .catch(()=>{});
       return tr;
     }))
   ]);
   qtDiv.innerHTML=''; qtDiv.appendChild(tbl);
-  // DPA購入入力のサジェスト
-  buyName.setAttribute('list','dpaNames');
-  const datalist = document.getElementById('dpaNames') || el('datalist',{id:'dpaNames'});
-  datalist.innerHTML=''; for(const r of rows) datalist.appendChild(el('option',{value:r.nameJa}));
-  document.body.appendChild(datalist);
-  renderFavs();
+}
+function fillDpaNameList(){
+  const dl=document.getElementById('dpaNames'); dl.innerHTML='';
+  for(const r of state.qt) dl.appendChild(el('option',{value:r.nameJa}));
 }
 
-// ===== 「いま行くなら」提案（★の中から上位3つ） =====
+// ===== 「いま行くなら」 =====
 async function renderNowTips(){
   const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
   if (!favs.length){ nowTipsDiv.textContent='お気に入り（★）が未選択です。'; return; }
-  // 予測との差がマイナス（今が空いている）順 → 待ち時間順
   const scored=[];
   for(const r of favs){
     let median=null;
-    try{
-      const j=await (await fetch(`/.netlify/functions/qt-stats?park=${parkSel.value}&name=${encodeURIComponent(r.nameRaw)}`)).json();
-      median=j.median;
-    }catch{}
+    try{ const j=await (await fetch(`/.netlify/functions/qt-stats?park=${parkSel.value}&name=${encodeURIComponent(r.nameRaw)}`)).json(); median=j.median; }catch{}
     const delta=(median!=null&&r.wait!=null)? (r.wait - median):0;
     scored.push({ ...r, median, delta });
   }
   scored.sort((a,b)=> (a.delta||999) - (b.delta||999) || (a.wait||999)-(b.wait||999));
-  const top=scored.slice(0,3).map(x=> `${x.nameJa}（${x.wait??'-'}分 / 予測${x.median??'-'}）`);
-  nowTipsDiv.textContent = top.join(' / ');
+  nowTipsDiv.textContent = scored.slice(0,3).map(x=> `${x.nameJa}（${x.wait??'-'}分 / 予測${x.median??'-'}）`).join(' / ');
 }
 
 // ===== DPA / PP（最新） =====
@@ -348,22 +386,27 @@ function renderFavs(){
   document.getElementById('favs').textContent = names.length ? 'お気に入り：'+names.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
 }
 
-// ===== ルール保存/読込 =====
+// ===== 通知ルール =====
 async function loadRules(){
   const { data:{user} }=await supabase.auth.getUser(); if(!user){ state.rules=null; return; }
   const { data } = await supabase.from('user_alert_rules').select('*').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).maybeSingle();
   const r = data || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
   rCloseReopen.checked = !!r.notify_close_reopen; rDpaSale.checked = !!r.notify_dpa_sale; rSpike.value = r.spike_threshold; rWindow.value = r.window_minutes;
 }
-btnSaveRules.onclick=async()=>{ const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+document.getElementById('btnSaveRules').onclick=async()=>{ const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
   const row={ user_id:user.id, park_id:parseInt(parkSel.value,10), notify_close_reopen:rCloseReopen.checked, notify_dpa_sale:rDpaSale.checked, spike_threshold:Number(rSpike.value||20), window_minutes:Number(rWindow.value||10) };
   await supabase.from('user_alert_rules').upsert(row,{ onConflict:'user_id,park_id' }); alert('保存しました');
 };
 
-// ===== DPA購入管理 =====
-async function loadPurchases(){ const { data:{user} }=await supabase.auth.getUser(); if(!user){ document.getElementById('purchases').innerHTML=''; return; }
+// ===== DPA購入管理（自動スケジュール反映つき） =====
+async function loadPurchases(){ const { data:{user} }=await supabase.auth.getUser(); if(!user){ document.getElementById('purchases').innerHTML=''; state.fixedAuto=[]; return; }
   const { data } = await supabase.from('dpa_purchases').select('*').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).order('slot_start');
-  state.purchases=data||[]; renderPurchases();
+  state.purchases=data||[]; // 表示
+  // 自動固定イベントに反映
+  state.fixedAuto = (data||[]).map(p => ({ name:p.attraction_name, start:new Date(p.slot_start), dur:Math.max(1, Math.round((new Date(p.slot_end)-new Date(p.slot_start))/60000)), method:'DPA' }));
+  renderPurchases(); renderEvents();
+  // 自動スケジュールの共有リンク（当日があれば表示）
+  showAutoScheduleLinkForToday();
 }
 function renderPurchases(){
   const box=document.getElementById('purchases'); box.innerHTML='';
@@ -384,17 +427,81 @@ document.getElementById('btnAddPurchase').onclick=async()=>{
   const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
   const row={ user_id:user.id, park_id:parseInt(parkSel.value,10), attraction_name:buyName.value, slot_start:new Date(buyStart.value).toISOString(), slot_end:new Date(buyEnd.value).toISOString(), quantity:Number(buyQty.value||1), note:buyNote.value||'' };
   if(!row.attraction_name||!row.slot_start||!row.slot_end) return alert('値を確認してください');
-  await supabase.from('dpa_purchases').insert(row); buyName.value=''; buyNote.value=''; await loadPurchases(); alert('登録しました');
+  await supabase.from('dpa_purchases').insert(row);
+  // 画面上の固定イベントにも即時反映
+  state.fixedAuto.push({ name: row.attraction_name, start: new Date(buyStart.value), dur: Math.max(1, Math.round((new Date(buyEnd.value)-new Date(buyStart.value))/60000)), method:'DPA' });
+  renderEvents();
+  // 自動スケジュールへ即反映
+  await addPurchaseToAutoSchedule(row);
+  // 入力クリア & 再読込
+  buyName.value=''; buyNote.value=''; await loadPurchases();
+  alert('登録しました（自動スケジュールにも追加済み）');
 };
 
-// ===== 手動スケジュール（回数指定） =====
+// 自動スケジュール（当日分）に反映
+async function addPurchaseToAutoSchedule(purchaseRow){
+  const { data:{user} }=await supabase.auth.getUser(); if(!user) return;
+  const parkId = purchaseRow.park_id;
+  const start = new Date(purchaseRow.slot_start);
+  const end = new Date(purchaseRow.slot_end);
+  const dateStr = start.toISOString().slice(0,10);
+  const schedName = `自動スケジュール ${dateStr}`;
+
+  // 既存の当日スケジュールを取得 or 作成
+  let { data:sch } = await supabase.from('user_schedules').select('id,share_token,name').eq('user_id',user.id).eq('park_id',parkId).eq('name',schedName).maybeSingle();
+  if(!sch){
+    const ins = await supabase.from('user_schedules').insert({ user_id:user.id, park_id:parkId, name:schedName }).select('id,share_token,name').single();
+    if (ins.error) { console.warn(ins.error); return; }
+    sch = ins.data;
+  }
+
+  // 重複チェック：同名・同開始のDPAがあれば挿入スキップ
+  const { data:dup } = await supabase.from('user_schedule_items')
+    .select('id').eq('schedule_id',sch.id)
+    .eq('attraction_name', purchaseRow.attraction_name)
+    .eq('method','DPA')
+    .eq('planned_time', start.toISOString())
+    .limit(1);
+  if (!dup?.length){
+    await supabase.from('user_schedule_items').insert({
+      schedule_id: sch.id,
+      order_no: 9999, // 後で並べ替えるので仮
+      attraction_name: purchaseRow.attraction_name,
+      method: 'DPA',
+      planned_time: start.toISOString(),
+      duration_min: Math.max(1, Math.round((end-start)/60000)),
+      area: 'イベント'
+    });
+    // 時刻順に order_no を再採番
+    const { data:items } = await supabase.from('user_schedule_items').select('id,planned_time').eq('schedule_id', sch.id).order('planned_time');
+    let idx=1; for (const it of (items||[])) { await supabase.from('user_schedule_items').update({ order_no: idx++ }).eq('id', it.id); }
+  }
+
+  // 共有リンク表示
+  const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token);
+  autoSchedLink.innerHTML = `今日の自動スケジュール： <a href="${url.toString()}">${url.toString()}</a>`;
+}
+async function showAutoScheduleLinkForToday(){
+  const { data:{user} }=await supabase.auth.getUser(); if(!user){ autoSchedLink.textContent=''; return; }
+  const dateStr = new Date().toISOString().slice(0,10);
+  const schedName = `自動スケジュール ${dateStr}`;
+  const { data:sch } = await supabase.from('user_schedules').select('id,share_token').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).eq('name',schedName).maybeSingle();
+  if (sch){
+    const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token);
+    autoSchedLink.innerHTML = `今日の自動スケジュール： <a href="${url.toString()}">${url.toString()}</a>`;
+  } else {
+    autoSchedLink.textContent = '';
+  }
+}
+
+// ===== 手動スケジュール（回数指定 & 固定イベント） =====
 function renderCountsEditor(){
   const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
   countsDiv.innerHTML='';
   if(!favs.length){ countsDiv.textContent='★で施設を選ぶと回数指定できます。'; return; }
   const grid = el('div',{class:'grid3'});
   for(const r of favs){
-    const area=AREA_MAP[parkSel.value]?.[r.nameJa] || '?';
+    const area=areaOf(r.nameJa);
     grid.appendChild(el('div',{class:'row'},[
       el('span',{}, r.nameJa +'（'+area+'）'),
       el('input',{type:'number', min:'0', value:'1', id:`count-${r.nameRaw}`, class:'w120'})
@@ -402,7 +509,40 @@ function renderCountsEditor(){
   }
   countsDiv.appendChild(grid);
 }
-function areaOf(nameJa){ return AREA_MAP[parkSel.value]?.[nameJa] || '?'; }
+// 固定イベント UI（手動追加）
+evName.addEventListener('change', async ()=>{
+  const hit = state.parades.find(p => p.name === evName.value);
+  if (hit && (!evDur.value || Number(evDur.value) === 30)) evDur.value = String(hit.default_duration_min || 30);
+});
+btnAddEvent.onclick = ()=>{
+  if(!evName.value || !evStart.value) return alert('名称と開始を入力してください');
+  const start = new Date(evStart.value);
+  const dur = Number(evDur.value||30);
+  state.fixedManual.push({ name: evName.value, start, dur, method:'Parade' });
+  evName.value=''; evStart.value=''; evDur.value='30';
+  renderEvents();
+};
+function renderEvents(){
+  const wrap=eventsList; wrap.innerHTML='';
+  const sec = (title, arr, deletable) => el('div',{},[
+    el('h4',{},title),
+    !arr.length ? el('div',{class:'mut'},'なし') :
+    el('table',{},[
+      el('thead',{}, el('tr',{},[el('th',{},'種別'),el('th',{},'名称'),el('th',{},'開始'),el('th',{},'所要'),el('th',{},'操作')])),
+      el('tbody',{}, arr.slice().sort((a,b)=>a.start-b.start).map((e,i)=> el('tr',{},[
+        el('td',{}, e.method),
+        el('td',{}, e.name),
+        el('td',{}, e.start.toLocaleString()),
+        el('td',{}, `${e.dur}分`),
+        el('td',{}, deletable ? el('button',{onclick:()=>{ arr.splice(i,1); renderEvents(); }},'削除') : el('span',{class:'mut'},'—'))
+      ])))
+    ])
+  ]);
+  wrap.appendChild(sec('DPA購入（自動反映）', state.fixedAuto, false));
+  wrap.appendChild(sec('固定イベント（手動）', state.fixedManual, true));
+}
+
+// 簡易エリア最適化
 function optimizeByArea(list){
   const out=[]; let curArea=null; const pool=list.slice(0);
   while(pool.length){
@@ -412,43 +552,79 @@ function optimizeByArea(list){
   }
   return out;
 }
+
 document.getElementById('btnPlan').onclick=async()=>{
   const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
   const start = document.getElementById('startTime').value || '09:00';
   const walk = Number(document.getElementById('walk').value||10);
   const today = new Date().toISOString().slice(0,10);
+
+  // ★から回数展開
   const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
-  // 回数展開
   let tasks=[];
   for(const r of favs){
     const n = Number(document.getElementById(`count-${r.nameRaw}`)?.value||0);
     for(let i=0;i<n;i++) tasks.push(r);
   }
-  if(!tasks.length) return alert('回数が0です');
-  tasks = optimizeByArea(tasks); // 簡易エリア最適化
-  // タイムライン
-  let cursor=new Date(`${today}T${start}:00`);
-  const steps=[];
+
+  // 固定イベント = 自動(DPA) + 手動(Parade)
+  const fixed = [...state.fixedAuto, ...state.fixedManual]
+    .map(e => ({ ...e, end: new Date(e.start.getTime() + e.dur*60000) }))
+    .sort((a,b)=> a.start - b.start);
+
+  if(!tasks.length && !fixed.length) return alert('回数指定や固定イベントがありません');
+
+  // DPA対象を優先（簡易）
+  const dpaTargets = new Set(tasks.slice().sort((a,b)=>(b.wait||0)-(a.wait||0)).slice(0, Math.ceil(tasks.length/2)).map(x=>x.nameRaw));
+
+  // 固定イベントを避けながら配置
+  let cursor = new Date(`${today}T${start}:00`);
+  const steps = [];
+  function bumpPastFixed(cur, durMin){
+    let cur2 = new Date(cur);
+    while(true){
+      const hit = fixed.find(f => cur2 < f.end && new Date(cur2.getTime()+durMin*60000) > f.start);
+      if(!hit) return cur2;
+      cur2 = new Date(hit.end.getTime() + walk*60000);
+    }
+  }
+  // まずライドを並べる（エリア最適化）
+  tasks = optimizeByArea(tasks);
   for(const t of tasks){
-    const useDpa = state.dpa.find(d=>d.name===t.nameJa && d.dpa_status==='販売中') ? true : false;
+    const useDpa = dpaTargets.has(t.nameRaw);
     const dur = useDpa ? 20 : (t.wait||20);
+    cursor = bumpPastFixed(cursor, dur);
     steps.push({ name:t.nameJa, raw:t.nameRaw, method: useDpa?'DPA':'Standby', at:new Date(cursor), dur, area: areaOf(t.nameJa) });
     cursor = new Date(cursor.getTime() + (dur+walk)*60000);
   }
-  // 出力
-  planOut.textContent = steps.map(s=> `${s.at.toTimeString().slice(0,5)} ${s.method} → ${s.name}（${s.dur}分） [${s.area}]`).join('\n');
+  // 固定イベントを統合（そのまま）
+  const fixSteps = fixed.map(f => ({ name:f.name, raw:f.name, method:f.method, at:new Date(f.start), dur:f.dur, area:'イベント' }));
+  const allSteps = [...steps, ...fixSteps].sort((a,b)=> a.at - b.at);
+
+  // 表示
+  planOut.textContent = allSteps.map(s=> `${s.at.toTimeString().slice(0,5)} ${s.method} → ${s.name}（${s.dur}分） [${s.area}]`).join('\n');
+
   // 保存 + 共有リンク
   const sched = { user_id:user.id, park_id:parseInt(parkSel.value,10), name:`手動スケジュール ${new Date().toLocaleTimeString()}` };
   const { data:sch, error:e1 } = await supabase.from('user_schedules').insert(sched).select('id,share_token').single();
   if(e1) return alert(e1.message);
-  const items = steps.map((s,i)=>({ schedule_id:sch.id, order_no:i+1, attraction_name:s.raw, method:s.method, planned_time:s.at.toISOString(), duration_min:s.dur, area:s.area }));
+  const items = allSteps.map((s,i)=>({ schedule_id:sch.id, order_no:i+1, attraction_name:s.raw, method:s.method, planned_time:s.at.toISOString(), duration_min:s.dur, area:s.area }));
   const { error:e2 } = await supabase.from('user_schedule_items').insert(items);
   if(e2) return alert(e2.message);
   const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token);
   shareLink.innerHTML = `共有リンク： <a href="${url.toString()}">${url.toString()}</a>`;
 };
 
-// ===== 共有リンクでスケジュールを読む（閲覧専用） =====
+// ===== パレード候補（マスタ） =====
+async function loadParades(){
+  const parkId = parseInt(parkSel.value,10);
+  const { data, error } = await supabase.from('parades').select('*').eq('park_id', parkId).order('name');
+  state.parades = data||[];
+  const dl = document.getElementById('paradeNames'); dl.innerHTML = '';
+  for(const p of state.parades) dl.appendChild(el('option',{ value:p.name }));
+}
+
+// ===== 共有リンクで閲覧 =====
 async function loadShared(){
   const sp = new URLSearchParams(location.search); const token = sp.get('schedule'); if(!token) return;
   const { data:sch } = await supabase.from('user_schedules').select('id,name').eq('share_token', token).single();
@@ -459,7 +635,7 @@ async function loadShared(){
 
 // ===== 通知フィード（最新20件 + Realtime） =====
 async function loadFeed(){ const { data } = await supabase.from('notifications').select('*').order('created_at',{ascending:false}).limit(20); renderFeed(data||[]); }
-function renderFeed(items){ feedDiv.innerHTML=''; for(const n of items){ feedDiv.appendChild(el('div',{class:'row'}, `[${new Date(n.created_at).toLocaleTimeString()}] ${n.title} - ${n.body}` )); } }
+function renderFeed(items){ feedDiv.innerHTML=''; for(const n of items){ feedDiv.prepend(el('div',{class:'row'}, `[${new Date(n.created_at).toLocaleTimeString()}] ${n.title} - ${n.body}` )); } }
 supabase.channel('feed').on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},p=>{ feedDiv.prepend(el('div',{class:'row'}, `[${new Date(p.new.created_at).toLocaleTimeString()}] ${p.new.title} - ${p.new.body}` ));}).subscribe();
 
 // ===== Push購読 =====
@@ -476,10 +652,13 @@ btnNotify.onclick=async()=>{ if(!ENV.VAPID_PUBLIC_KEY) return alert('VAPID_PUBLI
 // ===== ボタン配線 =====
 document.getElementById('btnRefresh').onclick=()=>{ loadQT(); renderNowTips(); };
 document.getElementById('btnFetchDpa').onclick=async()=>{ await fetch('/.netlify/functions/ingest-tdr-dpa-background',{method:'POST'}).catch(()=>{}); await new Promise(r=>setTimeout(r,15000)); await loadDPA(); };
-parkSel.onchange=async()=>{ await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await renderNowTips(); };
-[fDpaOnly,fKids,fMaxWait,sortBy].forEach(el=> el.onchange=()=>{renderQT();});
+parkSel.onchange = async () => {
+  await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases();
+  await loadParades(); renderEvents(); await renderNowTips();
+};
 
-await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadFeed();
+// ===== 初期化 =====
+await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed();
 </script>
 </body>
 </html>
