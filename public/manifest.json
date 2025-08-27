@@ -1,6 +1,6 @@
 {
-  "name": "TDR DPA & Queue Times",
-  "short_name": "TDRDPA",
+  "name": "TDR DPA & 待ち時間 通知",
+  "short_name": "TDR助手",
   "start_url": "/app.html",
   "display": "standalone",
   "background_color": "#0f172a",
