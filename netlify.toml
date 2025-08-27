@@ -14,3 +14,6 @@
   name = "ingest-tdr-dpa-background"
   cron = "* * * * *"
 
+[[scheduled.functions]]
+  name = "notify-dpa-window"
+  cron = "* * * * *"   # 毎分
