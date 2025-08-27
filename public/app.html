@@ -140,25 +140,37 @@ btnSendLink.onclick = async () => {
   const email = (loginEmail.value || '').trim();
   if (!email) return alert('メールアドレスを入力してください');
 
-  // まず Magic Link（新規作成も許可）で送る
+  // 1) まず既存前提で OTP を送る（ユーザーがいればこれでOK）
   let { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: true }
+    options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false }
   });
 
-  // 新規作成でDB側がコケた場合のフォールバック
-  if (error && /Database error saving new user/i.test(error.message)) {
-    const res2 = await supabase.auth.signUp({
+  // 2) 「ユーザーがいない」系のエラーなら作成してから再送
+  if (error && /user.*not.*found|invalid login|No account/i.test(error.message)) {
+    const r1 = await supabase.auth.signUp({
       email,
       options: { emailRedirectTo: location.origin + '/app.html' }
     });
-    error = res2.error || null;
+    if (r1.error) return alert(r1.error.message);
+
+    // 作成できたので OTP も送信済み / 以降は案内
+    error = null;
+  }
+
+  // 3) まれに Supabase から「Database error saving new user」等が返る時のフォールバック
+  if (error && /Database error saving new user|duplicate key|partial_key/i.test(error.message)) {
+    const r2 = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false }
+    });
+    if (r2.error) return alert(r2.error.message);
+    error = null;
   }
 
   if (error) alert(error.message);
-  else { alert('メールを送信しました。届いたリンクを開くとログイン完了です。'); closeLogin(); }
+  else { alert('ログイン用メールを送信しました。届いたリンクを開いてください。'); closeLogin(); }
 };
-
 btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 
 async function refreshAuthUI() {
