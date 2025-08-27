@@ -395,10 +395,13 @@ btnNotify.onclick = async () => {
 // ======= Wire up buttons =======
 document.getElementById('btnRefresh').onclick = () => loadQT();
 document.getElementById('btnFetchDpa').onclick = async () => {
-  await fetch('/.netlify/functions/ingest-tdr-dpa'); // trigger server scrape now
+  // 裏で実行をキック
+  await fetch('/.netlify/functions/ingest-tdr-dpa-background', { method: 'POST' }).catch(()=>{});
+  // 少し待ってから最新を読む（必要なら待機時間を長めに）
+  const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
+  await sleep(15000);
   await loadDPA();
 };
-
 parkSel.onchange = async () => { await loadFavs(); await loadQT(); };
 await loadFavs(); await loadQT(); await loadDPA(); await refreshPresets(); await loadFeed();
 </script>
