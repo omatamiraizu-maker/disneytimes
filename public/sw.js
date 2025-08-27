@@ -1,23 +1,26 @@
-// public/sw.js - service worker for Web Push
-self.addEventListener('install', (event) => {
+const CACHE = 'tdr-app-v1';
+const APP_SHELL = ['/', '/app.html', '/manifest.json', '/.netlify/functions/env'];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(APP_SHELL)));
   self.skipWaiting();
 });
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
+  );
   self.clients.claim();
 });
-self.addEventListener('push', (event) => {
-  let data = {};
-  try { data = event.data.json(); } catch {}
-  const title = data.title || '通知';
-  const options = {
-    body: data.body || '',
-    data,
-    icon: '/icon.png',
-    badge: '/icon.png',
-  };
-  event.waitUntil(self.registration.showNotification(title, options));
-});
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  event.waitUntil(clients.openWindow('/app.html'));
+// network-first（データは最新を優先／オフライン時はキャッシュ）
+self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+  if (url.origin === location.origin && (url.pathname === '/' || url.pathname.endsWith('/app.html') || url.pathname.startsWith('/.netlify/functions/env'))) {
+    e.respondWith(
+      fetch(e.request).then(r => {
+        const copy = r.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return r;
+      }).catch(()=>caches.match(e.request))
+    );
+  }
 });
