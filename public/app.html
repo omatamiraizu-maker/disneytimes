@@ -139,10 +139,22 @@ btnCloseLogin.onclick = closeLogin;
 btnSendLink.onclick = async () => {
   const email = (loginEmail.value || '').trim();
   if (!email) return alert('メールアドレスを入力してください');
-  const { error } = await supabase.auth.signInWithOtp({
+
+  // まず Magic Link（新規作成も許可）で送る
+  let { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: location.origin + '/app.html' }
+    options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: true }
   });
+
+  // 新規作成でDB側がコケた場合のフォールバック
+  if (error && /Database error saving new user/i.test(error.message)) {
+    const res2 = await supabase.auth.signUp({
+      email,
+      options: { emailRedirectTo: location.origin + '/app.html' }
+    });
+    error = res2.error || null;
+  }
+
   if (error) alert(error.message);
   else { alert('メールを送信しました。届いたリンクを開くとログイン完了です。'); closeLogin(); }
 };
