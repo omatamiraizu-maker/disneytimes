@@ -200,25 +200,28 @@ function el(tag, attrs={}, children=[]) {
 async function loadQT() {
   const parkId = parseInt(parkSel.value, 10);
   const { data, error } = await supabase
-    .from('queue_times')
-    .select('attraction_name, is_open, wait_time, fetched_at')
+    .from('v_queue_times_latest')
+    .select('name_ja, name_raw, is_open, wait_time, fetched_at')
     .eq('park_id', parkId)
-    .order('fetched_at', { ascending: false })
-    .limit(600);
+    .limit(300);
   if (error) { qtDiv.textContent = error.message; return; }
-  const seen = new Set(); const latest = [];
-  for (const row of data) { if (seen.has(row.attraction_name)) continue; seen.add(row.attraction_name); latest.push(row); }
-  state.qt = latest.sort((a,b)=> a.attraction_name.localeCompare(b.attraction_name,'ja'));
+
+  // raw名でキー管理（★や通知の突合は raw 名）
+  state.qt = (data || [])
+    .map(r => ({ attraction_name_display: r.name_ja, attraction_name_raw: r.name_raw, is_open: r.is_open, wait_time: r.wait_time, fetched_at: r.fetched_at }))
+    .sort((a,b)=> a.attraction_name_display.localeCompare(b.attraction_name_display,'ja'));
   renderQT();
 }
+
 function renderQT() {
   const tbl = el('table',{},[
-    el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設'), el('th',{},'待ち'), el('th',{},'状態')])),
+    el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設（日本語）'), el('th',{},'待ち'), el('th',{},'状態')])),
     el('tbody',{}, state.qt.map(r=>{
-      const fav = state.favorites.has(r.attraction_name);
+      const key = r.attraction_name_raw;                 // ★は raw で判定
+      const fav = state.favorites.has(key);
       return el('tr',{},[
-        el('td',{}, el('span',{ class:'fav', onclick:()=>toggleFav(r.attraction_name) }, fav ? '★' : '☆')),
-        el('td',{}, r.attraction_name),
+        el('td',{}, el('span',{ class:'fav', onclick:()=>toggleFav(key) }, fav ? '★' : '☆')),
+        el('td',{}, r.attraction_name_display),
         el('td',{}, el('span',{class:'mono'}, (r.wait_time ?? '-').toString())),
         el('td',{}, r.is_open ? el('span',{class:'good'},'運営中') : el('span',{class:'bad'},'休止'))
       ]);
@@ -251,8 +254,10 @@ async function loadFavs() {
   renderFavs();
 }
 function renderFavs() {
-  const favs = state.qt.filter(x=> state.favorites.has(x.attraction_name)).map(x=>x.attraction_name);
-  document.getElementById('favs').textContent = favs.length ? 'お気に入り：' + favs.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
+  const names = state.qt
+    .filter(x => state.favorites.has(x.attraction_name_raw))
+    .map(x => x.attraction_name_display);
+  document.getElementById('favs').textContent = names.length ? 'お気に入り：' + names.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
 }
 
 // ===== DPA/PP ステータス（最新） =====
