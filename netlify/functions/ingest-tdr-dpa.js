@@ -1,5 +1,5 @@
 // netlify/functions/ingest-tdr-dpa.js
-// TDR公式一覧ページを短時間でスクレイピング → Supabase に保存
+// 手動叩き用：短めタイムアウト（10秒）で即レス返す
 import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
 
@@ -11,30 +11,9 @@ const PAGES = [
   { code: 'TDS', url: 'https://www.tokyodisneyresort.jp/tds/attraction.html' },
 ];
 
-// 8秒でタイムアウトする fetch
-async function fetchWithTimeout(url, ms = 8000, opts = {}) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const r = await fetch(url, {
-      ...opts,
-      signal: ctrl.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Netlify Function)',
-        'Accept-Language': 'ja,en;q=0.8',
-        ...(opts.headers || {}),
-      },
-    });
-    return r;
-  } finally {
-    clearTimeout(id);
-  }
-}
-
 function classify(labels) {
   const t = labels.join(' ');
-  let dpa = '記載なし';
-  let pp = '記載なし';
+  let dpa = '記載なし', pp = '記載なし';
   if (t.includes('ディズニー・プレミアアクセス')) {
     if (t.includes('販売中')) dpa = '販売中';
     else if (t.includes('販売なし') || t.includes('販売を行わない')) dpa = '販売なし';
@@ -48,21 +27,39 @@ function classify(labels) {
   return { dpa, pp };
 }
 
+async function fetchHTML(url, ms = 10000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Netlify Function)',
+        'Accept-Language': 'ja,en;q=0.8',
+        'Cache-Control': 'no-cache'
+      },
+    });
+    const body = await r.text();
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} body=${body.slice(0,180)}`);
+    return body;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 export const handler = async () => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth: { persistSession: false } });
+
   const { data: parks } = await sb.from('parks').select('*');
   const parkByCode = Object.fromEntries((parks || []).map((p) => [p.code, p]));
 
   const out = [];
   for (const p of PAGES) {
     try {
-      const resp = await fetchWithTimeout(p.url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const html = await resp.text();
+      const html = await fetchHTML(p.url, 10000);
       const $ = cheerio.load(html);
-
-      // a[href*="/attraction/detail/"] のみ抽出して最小限の領域だけテキスト化（高速化）
       const anchors = $('a[href*="/attraction/detail/"]').toArray();
+
       const rows = anchors.map((a) => {
         const el = $(a);
         const name =
@@ -70,8 +67,6 @@ export const handler = async () => {
           el.attr('title') ||
           (el.text() || '').trim();
         const url = new URL(el.attr('href'), p.url).toString();
-
-        // 近傍の注意ラベルから DPA/PP を判定
         const labels = [];
         const holder = el.closest('li, .postItem, .listItem, .col, .box');
         holder.find('.operation, .operation .warning, .label, .tag, .notes, .notice, .status').each((_, n) => {
@@ -81,9 +76,7 @@ export const handler = async () => {
         return { name, url, dpa, pp };
       });
 
-      // Supabase へ upsert + snapshot insert（バルク）
       const park = parkByCode[p.code];
-      // attractions upsert（重複を避けるため名前とparkでユニーク）
       const upserts = rows.map((r) => ({ park_id: park.id, name: r.name, tdr_url: r.url }));
       const { data: attrs, error: upErr } = await sb
         .from('attractions')
@@ -92,19 +85,19 @@ export const handler = async () => {
       if (upErr) throw upErr;
 
       const idByName = Object.fromEntries((attrs || []).map((a) => [a.name, a.id]));
-      const snapshots = rows.map((r) => ({
+      const snaps = rows.map((r) => ({
         attraction_id: idByName[r.name],
         dpa_status: r.dpa,
         pp40_status: r.pp,
         status_operational: null,
         source: 'tdr',
       }));
-      const { error: snapErr } = await sb.from('attraction_status').insert(snapshots);
+      const { error: snapErr } = await sb.from('attraction_status').insert(snaps);
       if (snapErr) throw snapErr;
 
-      out.push({ park: p.code, count: snapshots.length });
+      out.push({ park: p.code, count: snaps.length });
     } catch (e) {
-      out.push({ park: p.code, error: String(e) });
+      out.push({ park: p.code, error: String(e && e.message ? e.message : e) });
     }
   }
 
