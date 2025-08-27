@@ -2,7 +2,6 @@
 // 手動叩き用：短めタイムアウト（10秒）で即レス返す
 import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
-
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 
