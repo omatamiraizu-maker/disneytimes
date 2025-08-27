@@ -3,26 +3,27 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>TDR DPAスケジュール & 待ち時間 通知アプリ</title>
+<title>TDR DPA & 待ち時間 通知アプリ</title>
 <link rel="manifest" href="/manifest.json">
 <style>
   :root { --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --mute:#94a3b8; --line:#1f2937; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; }
   *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif}
   a{color:var(--accent)} header{position:sticky;top:0;background:#0b1220;border-bottom:1px solid var(--line);z-index:10}
-  .wrap{max-width:1100px;margin:0 auto;padding:14px}
+  .wrap{max-width:1200px;margin:0 auto;padding:14px}
   .g{display:grid;gap:12px} .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input,select,button,textarea{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#0b1220;color:var(--ink);outline:none}
+  input,select,button{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#0b1220;color:var(--ink);outline:none}
   button{cursor:pointer} .cta{background:var(--accent);color:#00111a;border:0;font-weight:800}
   .mut{color:var(--mute)} .mono{font-variant-numeric:tabular-nums}
-  table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+  table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:middle}
   .tag{font-size:12px;border:1px solid var(--line);padding:2px 8px;border-radius:8px;color:var(--mute)}
-  .tag.dpa{color:#93c5fd;border-color:#1e3a8a}
-  .tag.pp{color:#a7f3d0;border-color:#064e3b}
-  .good{color:var(--good)} .bad{color:var(--bad)}
-  .fav{cursor:pointer} .plan{white-space:pre-wrap;background:#0b1220;border:1px dashed #334155;padding:10px;border-radius:12px}
-  /* モーダル */
+  .tag.dpa{color:#93c5fd;border-color:#1e3a8a}.tag.pp{color:#a7f3d0;border-color:#064e3b}
+  .good{color:var(--good)} .bad{color:var(--bad)} .fav{cursor:pointer}
+  .plan{white-space:pre-wrap;background:#0b1220;border:1px dashed #334155;padding:10px;border-radius:12px}
+  .pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .w120{width:120px}
   .modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center}
   .modal.on{display:flex}
   .card{background:#0b1220;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:320px;max-width:420px}
@@ -31,11 +32,12 @@
 <body>
 <header><div class="wrap">
   <div class="row" style="justify-content:space-between">
-    <div><strong>🧭 TDR DPA / 待ち時間 通知アプリ</strong> <span class="mut"></span></div>
+    <div><strong>🧭 TDR DPA & 待ち時間 通知</strong> <span class="mut"></span></div>
     <div class="row">
       <span id="userEmail" class="mut"></span>
       <button id="btnOpenLogin" class="cta">ログイン / 新規登録</button>
       <button id="btnLogout">ログアウト</button>
+      <button id="btnInstall">アプリをインストール</button>
     </div>
   </div>
 </div></header>
@@ -43,39 +45,54 @@
 <main class="wrap g">
   <section class="panel">
     <div class="row">
-      <label for="park">パーク：</label>
-      <select id="park">
-        <option value="274">東京ディズニーランド</option>
-        <option value="275">東京ディズニーシー</option>
-      </select>
+      <label>パーク：</label>
+      <select id="park"><option value="274">東京ディズニーランド</option><option value="275">東京ディズニーシー</option></select>
       <button id="btnNotify" class="cta">プッシュ通知を有効化</button>
       <span class="mut">（ブラウザの通知を許可してください）</span>
+    </div>
+    <div class="row">
+      <span class="pill">フィルタ：</span>
+      <label class="pill"><input type="checkbox" id="fDpaOnly"> DPA対象のみ</label>
+      <label class="pill"><input type="checkbox" id="fKids"> こども向け</label>
+      <label class="pill">待ち時間 ≤ <input type="number" id="fMaxWait" value="999" class="w120"> 分</label>
+      <label class="pill">並び順：
+        <select id="sortBy"><option value="name">名前</option><option value="wait">待ち時間（短い順）</option><option value="open">運営中を先に</option></select>
+      </label>
     </div>
   </section>
 
   <section class="g g2">
     <div class="panel">
       <h3 style="margin-top:0">⏱ 最新待ち時間</h3>
-      <div class="row">
-        <button id="btnRefresh" class="cta">最新の待ち時間を表示</button>
-        <span class="mut">※差異が生じる場合あり</span>
-      </div>
+      <div class="row"><button id="btnRefresh" class="cta">最新の待ち時間を表示</button><span class="mut">※差異が生じる場合あり</span></div>
       <div id="qt"></div>
+      <div style="margin-top:10px">
+        <strong>🎯 いま行くなら（お気に入りから）</strong>
+        <div id="nowTips" class="mut">お気に入り（★）が未選択です。</div>
+      </div>
     </div>
     <div class="panel">
       <h3 style="margin-top:0">🎫 DPA / PP ステータス</h3>
-      <div class="row">
-        <button id="btnFetchDpa" class="cta">最新を取得（約15秒）</button>
-        <span class="mut"></span>
-      </div>
+      <div class="row"><button id="btnFetchDpa" class="cta">最新を取得（約15秒かかります）</button></div>
       <div id="dpa"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3 style="margin-top:0">🔔 通知ルール</h3>
+    <div class="row">
+      <label class="pill"><input type="checkbox" id="rCloseReopen" checked> 休止/再開</label>
+      <label class="pill"><input type="checkbox" id="rDpaSale" checked> DPA販売中</label>
+      <label class="pill">スパイク閾値 ±<input type="number" id="rSpike" value="20" class="w120"> 分</label>
+      <label class="pill">DPA開始の <input type="number" id="rWindow" value="10" class="w120"> 分前に通知</label>
+      <button id="btnSaveRules" class="cta">保存</button>
     </div>
   </section>
 
   <section class="panel">
     <h3 style="margin-top:0">⭐ お気に入り / プリセット</h3>
     <div class="row">
-      <input id="presetName" placeholder="プリセット名（例：朝イチ定番）">
+      <input id="presetName" placeholder="プリセット名">
       <button id="btnSavePreset" class="cta">現在の★をプリセット保存</button>
       <select id="presetSelect"></select>
       <button id="btnLoadPreset">プリセット読込</button>
@@ -84,14 +101,30 @@
   </section>
 
   <section class="panel">
-    <h3 style="margin-top:0">📅 DPAスロット自動生成 & 行動プラン</h3>
+    <h3 style="margin-top:0">🧾 DPA購入管理</h3>
+    <div class="grid3">
+      <div><label>施設</label><input id="buyName" placeholder="（候補からクリックでも入力）"></div>
+      <div><label>開始</label><input id="buyStart" type="datetime-local"></div>
+      <div><label>終了</label><input id="buyEnd" type="datetime-local"></div>
+      <div><label>枚数</label><input id="buyQty" type="number" value="1"></div>
+      <div><label>メモ</label><input id="buyNote"></div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button id="btnAddPurchase" class="cta">登録</button>
+        <span class="mut">※開始のN分前（通知ルール）で通知</span>
+      </div>
+    </div>
+    <div id="purchases"></div>
+  </section>
+
+  <section class="panel">
+    <h3 style="margin-top:0">📅 手動スケジュール作成（回数指定＆簡易エリア最適化）</h3>
     <div class="row">
       <label>開始時刻</label><input id="startTime" type="time" value="09:00">
-      <label>徒歩/移動バッファ(分)</label><input id="walk" type="number" value="10" style="width:120px">
-      <label>乗りたい合計数</label><input id="rideCount" type="number" value="4" style="width:120px">
-      <button id="btnPlan" class="cta">プラン生成</button>
+      <label>徒歩/移動(分)</label><input id="walk" type="number" value="10" class="w120">
+      <button id="btnPlan" class="cta">生成して保存</button>
+      <span id="shareLink" class="mut"></span>
     </div>
-    <div class="row mut">スロットは8:45から15分間隔で1時間有効（シミュレーション）</div>
+    <div id="counts"></div>
     <div id="planOut" class="plan"></div>
   </section>
 
@@ -121,309 +154,332 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const ENV = window.ENV || {};
 const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY);
 
+// ===== PWA install prompt =====
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt', (e)=>{e.preventDefault(); deferredPrompt=e;});
+document.getElementById('btnInstall').onclick=async()=>{ if(!deferredPrompt) return alert('インストール不可'); deferredPrompt.prompt(); deferredPrompt=null; };
+
 // ===== ログインUI =====
-const userEmail = document.getElementById('userEmail');
-const btnOpenLogin = document.getElementById('btnOpenLogin');
-const btnLogout = document.getElementById('btnLogout');
-const loginModal = document.getElementById('loginModal');
-const loginEmail = document.getElementById('loginEmail');
-const btnCloseLogin = document.getElementById('btnCloseLogin');
-const btnSendLink = document.getElementById('btnSendLink');
+const userEmail=document.getElementById('userEmail');
+const btnOpenLogin=document.getElementById('btnOpenLogin');
+const btnLogout=document.getElementById('btnLogout');
+const loginModal=document.getElementById('loginModal');
+const loginEmail=document.getElementById('loginEmail');
+document.getElementById('btnCloseLogin').onclick=()=>loginModal.classList.remove('on');
+btnOpenLogin.onclick=()=>{loginModal.classList.add('on'); loginEmail.focus();};
+btnLogout.onclick=async()=>{await supabase.auth.signOut(); location.reload();};
 
-function openLogin(){ loginModal.classList.add('on'); loginEmail.focus(); }
-function closeLogin(){ loginModal.classList.remove('on'); }
-
-btnOpenLogin.onclick = openLogin;
-btnCloseLogin.onclick = closeLogin;
-
-btnSendLink.onclick = async () => {
-  const email = (loginEmail.value || '').trim();
-  if (!email) return alert('メールアドレスを入力してください');
-
-  // 1) まず既存前提で OTP を送る（ユーザーがいればこれでOK）
+document.getElementById('btnSendLink').onclick=async()=>{
+  const email=(loginEmail.value||'').trim(); if(!email) return alert('メールを入力');
   let { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false }
+    email, options:{ emailRedirectTo: location.origin+'/app.html', shouldCreateUser:false }
   });
-
-  // 2) 「ユーザーがいない」系のエラーなら作成してから再送
   if (error && /user.*not.*found|invalid login|No account/i.test(error.message)) {
-    const r1 = await supabase.auth.signUp({
-      email,
-      options: { emailRedirectTo: location.origin + '/app.html' }
-    });
+    const r1 = await supabase.auth.signUp({ email, options:{ emailRedirectTo: location.origin+'/app.html' } });
     if (r1.error) return alert(r1.error.message);
-
-    // 作成できたので OTP も送信済み / 以降は案内
     error = null;
   }
-
-  // 3) まれに Supabase から「Database error saving new user」等が返る時のフォールバック
   if (error && /Database error saving new user|duplicate key|partial_key/i.test(error.message)) {
-    const r2 = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false }
-    });
+    const r2 = await supabase.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin+'/app.html', shouldCreateUser:false } });
     if (r2.error) return alert(r2.error.message);
-    error = null;
   }
-
-  if (error) alert(error.message);
-  else { alert('ログイン用メールを送信しました。届いたリンクを開いてください。'); closeLogin(); }
+  alert('ログイン用メールを送信しました。'); loginModal.classList.remove('on');
 };
-btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 
-async function refreshAuthUI() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    userEmail.textContent = user.email || '(ログイン中)';
-    btnOpenLogin.style.display = 'none';
-    btnLogout.style.display = 'inline-block';
-  } else {
-    userEmail.textContent = '';
-    btnOpenLogin.style.display = 'inline-block';
-    btnLogout.style.display = 'none';
-  }
+async function refreshAuthUI(){
+  const { data:{ user } } = await supabase.auth.getUser();
+  if (user){ userEmail.textContent=user.email||'(ログイン中)'; btnOpenLogin.style.display='none'; btnLogout.style.display='inline-block'; }
+  else { userEmail.textContent=''; btnOpenLogin.style.display='inline-block'; btnLogout.style.display='none'; }
 }
-await refreshAuthUI();
-supabase.auth.onAuthStateChange(refreshAuthUI);
+await refreshAuthUI(); supabase.auth.onAuthStateChange(refreshAuthUI);
 
-// ===== 共通DOM =====
+// ===== 共通 =====
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
 const dpaDiv = document.getElementById('dpa');
 const feedDiv = document.getElementById('feed');
-const presetName = document.getElementById('presetName');
-const presetSelect = document.getElementById('presetSelect');
+const nowTipsDiv = document.getElementById('nowTips');
 
-const state = { favorites: new Set(), qt: [], dpa: [] };
-function el(tag, attrs={}, children=[]) {
-  const e = document.createElement(tag);
-  for (const [k,v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
-    else e.setAttribute(k,v);
-  }
-  for (const c of (Array.isArray(children) ? children : [children])) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-  return e;
-}
+const fDpaOnly = document.getElementById('fDpaOnly');
+const fKids = document.getElementById('fKids');
+const fMaxWait = document.getElementById('fMaxWait');
+const sortBy = document.getElementById('sortBy');
 
-// ===== 待ち時間（最新） =====
-async function loadQT() {
-  const parkId = parseInt(parkSel.value, 10);
-  const { data, error } = await supabase
-    .from('v_queue_times_latest')
-    .select('name_ja, name_raw, is_open, wait_time, fetched_at')
-    .eq('park_id', parseInt(parkSel.value,10))
-    .limit(300);
-  if (error) { qtDiv.textContent = error.message; return; }
+const rCloseReopen = document.getElementById('rCloseReopen');
+const rDpaSale = document.getElementById('rDpaSale');
+const rSpike = document.getElementById('rSpike');
+const rWindow = document.getElementById('rWindow');
+const btnSaveRules = document.getElementById('btnSaveRules');
 
-  // raw名でキー管理（★や通知の突合は raw 名）
-  state.qt = (data || [])
-    .map(r => ({ attraction_name_display: r.name_ja, attraction_name_raw: r.name_raw, is_open: r.is_open, wait_time: r.wait_time, fetched_at: r.fetched_at }))
-    .sort((a,b)=> a.attraction_name_display.localeCompare(b.attraction_name_display,'ja'));
+const presetName=document.getElementById('presetName');
+const presetSelect=document.getElementById('presetSelect');
+
+const buyName=document.getElementById('buyName');
+const buyStart=document.getElementById('buyStart');
+const buyEnd=document.getElementById('buyEnd');
+const buyQty=document.getElementById('buyQty');
+const buyNote=document.getElementById('buyNote');
+
+const planOut=document.getElementById('planOut');
+const countsDiv=document.getElementById('counts');
+const shareLink=document.getElementById('shareLink');
+
+const state={ favorites:new Set(), qt:[], dpa:[], rules:null, purchases:[] };
+const AREA_MAP={
+  274:{ "ビッグサンダー・マウンテン":"ウエスタンランド","スプラッシュ・マウンテン":"クリッターカントリー","スペース・マウンテン":"トゥモローランド","プーさんのハニーハント":"ファンタジーランド","ホーンテッドマンション":"ファンタジーランド" },
+  275:{ "ソアリン：ファンタスティック・フライト":"メディテレーニアンハーバー","トイ・ストーリー・マニア！":"アメリカンウォーターフロント","センター・オブ・ジ・アース":"ミステリアスアイランド","タワー・オブ・テラー":"アメリカンウォーターフロント" }
+}; // 未登録は "?" 扱い
+
+function el(tag, attrs={}, children=[]){ const e=document.createElement(tag); for(const[k,v] of Object.entries(attrs)){ if(k==='class') e.className=v; else if(k.startsWith('on')) e.addEventListener(k.slice(2),v); else e.setAttribute(k,v); } for(const c of (Array.isArray(children)?children:[children])) e.appendChild(typeof c==='string'?document.createTextNode(c):c); return e; }
+
+// ===== 最新待ち時間（日本語ビュー） =====
+async function loadQT(){
+  const parkId=parseInt(parkSel.value,10);
+  const { data, error } = await supabase.from('v_queue_times_latest').select('name_ja,name_raw,is_open,wait_time,fetched_at').eq('park_id',parkId).limit(600);
+  if (error){ qtDiv.textContent=error.message; return; }
+  state.qt = (data||[]).map(r=>({
+    nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at
+  }));
   renderQT();
+  renderCountsEditor(); // 手動スケジュール用の回数UI
+  renderNowTips();
 }
-
-function renderQT() {
+function applyFilters(list){
+  let out=list.slice(0);
+  if (fKids.checked){ out = out.filter(x=> /カルーセル|ダンボ|スモール|ジュニア|バギー|ティンカ|ゴーコースター|ビジーバギー/i.test(x.nameJa)); }
+  if (Number(fMaxWait.value) < 999){ out = out.filter(x=> (x.wait??999) <= Number(fMaxWait.value)); }
+  if (fDpaOnly.checked){
+    // DPA対象の判定：最新DPA表（state.dpa）から該当するものを抽出
+    const dpaSet=new Set(state.dpa.filter(d=>d.dpa_status==='販売中'||d.dpa_status==='要確認（記載あり）').map(d=>d.name));
+    out = out.filter(x=> dpaSet.has(x.nameJa));
+  }
+  if (sortBy.value==='wait') out.sort((a,b)=>(a.wait??999)-(b.wait??999));
+  else if (sortBy.value==='open') out.sort((a,b)=> (b.open?1:0)-(a.open?1:0));
+  else out.sort((a,b)=>a.nameJa.localeCompare(b.nameJa,'ja'));
+  return out;
+}
+function renderQT(){
+  const rows = applyFilters(state.qt);
   const tbl = el('table',{},[
-    el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設（日本語）'), el('th',{},'待ち'), el('th',{},'状態')])),
-    el('tbody',{}, state.qt.map(r=>{
-      const key = r.attraction_name_raw;                 // ★は raw で判定
-      const fav = state.favorites.has(key);
-      return el('tr',{},[
-        el('td',{}, el('span',{ class:'fav', onclick:()=>toggleFav(key) }, fav ? '★' : '☆')),
-        el('td',{}, r.attraction_name_display),
-        el('td',{}, el('span',{class:'mono'}, (r.wait_time ?? '-').toString())),
-        el('td',{}, r.is_open ? el('span',{class:'good'},'運営中') : el('span',{class:'bad'},'休止'))
+    el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設（日本語）'),el('th',{},'待ち'),el('th',{},'状態'),el('th',{},'予測（±30分/同曜日）')])),
+    el('tbody',{}, rows.map(r=>{
+      const fav=state.favorites.has(r.nameRaw);
+      const tr=el('tr',{},[
+        el('td',{}, el('span',{class:'fav',onclick:()=>toggleFav(r.nameRaw)}, fav?'★':'☆')),
+        el('td',{}, r.nameJa),
+        el('td',{}, el('span',{class:'mono'}, (r.wait??'-').toString())),
+        el('td',{}, r.open?el('span',{class:'good'},'運営中'):el('span',{class:'bad'},'休止')),
+        el('td',{}, el('span',{class:'mut', id:`pred-${r.nameRaw}`} , '…'))
       ]);
+      // 予測APIで中央値を取得（軽量化のためお気に入りのみ）
+      if (fav) fetch(`/.netlify/functions/qt-stats?park=${parkSel.value}&name=${encodeURIComponent(r.nameRaw)}`).then(r=>r.json()).then(j=>{
+        const elp=document.getElementById(`pred-${r.nameRaw}`); if (elp) elp.textContent = j?.median!=null ? `${j.median} 分 (${j.n})` : '-';
+      }).catch(()=>{});
+      return tr;
     }))
   ]);
-  qtDiv.innerHTML = ''; qtDiv.appendChild(tbl);
+  qtDiv.innerHTML=''; qtDiv.appendChild(tbl);
+  // DPA購入入力のサジェスト
+  buyName.setAttribute('list','dpaNames');
+  const datalist = document.getElementById('dpaNames') || el('datalist',{id:'dpaNames'});
+  datalist.innerHTML=''; for(const r of rows) datalist.appendChild(el('option',{value:r.nameJa}));
+  document.body.appendChild(datalist);
   renderFavs();
-}
-async function toggleFav(name) {
-  const parkId = parseInt(parkSel.value, 10);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return alert('ログインしてください');
-  if (state.favorites.has(name)) {
-    await supabase.from('user_favorites').delete().match({ user_id: user.id, park_id: parkId, attraction_name: name });
-    state.favorites.delete(name);
-  } else {
-    await supabase.from('user_favorites').upsert({ user_id: user.id, park_id: parkId, attraction_name: name });
-    state.favorites.add(name);
-  }
-  renderFavs(); renderQT();
-}
-async function loadFavs() {
-  const parkId = parseInt(parkSel.value, 10);
-  const { data: { user } } = await supabase.auth.getUser();
-  state.favorites.clear();
-  if (user) {
-    const { data } = await supabase.from('user_favorites').select('*').match({ user_id: user.id, park_id: parkId });
-    for (const row of (data||[])) state.favorites.add(row.attraction_name);
-  }
-  renderFavs();
-}
-function renderFavs() {
-  const names = state.qt
-    .filter(x => state.favorites.has(x.attraction_name_raw))
-    .map(x => x.attraction_name_display);
-  document.getElementById('favs').textContent = names.length ? 'お気に入り：' + names.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
 }
 
-// ===== DPA/PP ステータス（最新） =====
-async function loadDPA() {
-  const parkCode = parkSel.value === '274' ? 'TDL' : 'TDS';
-  const { data: parks } = await supabase.from('parks').select('id,code').eq('code', parkCode);
-  if (!parks?.length) { dpaDiv.textContent = 'parks なし'; return; }
-  const parkId = parks[0].id;
-  const { data: attrs } = await supabase.from('attractions').select('id, name, park_id').eq('park_id', parkId);
-  const latest = [];
-  for (const a of attrs || []) {
-    const { data: rows } = await supabase.from('attraction_status').select('dpa_status, pp40_status, fetched_at').eq('attraction_id', a.id).order('fetched_at', { ascending:false }).limit(1);
-    if (rows && rows[0]) latest.push({ name: a.name, ...rows[0] });
+// ===== 「いま行くなら」提案（★の中から上位3つ） =====
+async function renderNowTips(){
+  const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
+  if (!favs.length){ nowTipsDiv.textContent='お気に入り（★）が未選択です。'; return; }
+  // 予測との差がマイナス（今が空いている）順 → 待ち時間順
+  const scored=[];
+  for(const r of favs){
+    let median=null;
+    try{
+      const j=await (await fetch(`/.netlify/functions/qt-stats?park=${parkSel.value}&name=${encodeURIComponent(r.nameRaw)}`)).json();
+      median=j.median;
+    }catch{}
+    const delta=(median!=null&&r.wait!=null)? (r.wait - median):0;
+    scored.push({ ...r, median, delta });
   }
-  latest.sort((x,y)=> x.name.localeCompare(y.name,'ja'));
-  state.dpa = latest;
-  renderDPA();
+  scored.sort((a,b)=> (a.delta||999) - (b.delta||999) || (a.wait||999)-(b.wait||999));
+  const top=scored.slice(0,3).map(x=> `${x.nameJa}（${x.wait??'-'}分 / 予測${x.median??'-'}）`);
+  nowTipsDiv.textContent = top.join(' / ');
 }
-function renderDPA() {
-  const tbl = el('table',{},[
-    el('thead',{}, el('tr',{},[el('th',{},'施設'), el('th',{},'DPA'), el('th',{},'PP(40th)'), el('th',{},'更新')])),
-    el('tbody',{}, state.dpa.map(r=> el('tr',{},[
+
+// ===== DPA / PP（最新） =====
+async function loadDPA(){
+  const parkCode=parkSel.value==='274'?'TDL':'TDS';
+  const { data: parks } = await supabase.from('parks').select('id,code').eq('code',parkCode);
+  if(!parks?.length){ dpaDiv.textContent='parks なし'; return; }
+  const parkId=parks[0].id;
+  const { data: attrs } = await supabase.from('attractions').select('id,name,park_id').eq('park_id',parkId);
+  const latest=[];
+  for(const a of attrs||[]){
+    const { data: rows } = await supabase.from('attraction_status').select('dpa_status,pp40_status,fetched_at').eq('attraction_id',a.id).order('fetched_at',{ascending:false}).limit(1);
+    if(rows&&rows[0]) latest.push({ name:a.name, dpa_status:rows[0].dpa_status, pp40_status:rows[0].pp40_status, t:rows[0].fetched_at });
+  }
+  latest.sort((x,y)=>x.name.localeCompare(y.name,'ja'));
+  state.dpa=latest;
+  const tbl=el('table',{},[
+    el('thead',{},el('tr',{},[el('th',{},'施設'),el('th',{},'DPA'),el('th',{},'PP(40th)'),el('th',{},'更新')])),
+    el('tbody',{}, latest.map(r=> el('tr',{},[
       el('td',{}, r.name),
-      el('td',{}, el('span',{class:'tag dpa'}, r.dpa_status || '-')),
-      el('td',{}, el('span',{class:'tag pp'}, r.pp40_status || '-')),
-      el('td',{}, new Date(r.fetched_at).toLocaleTimeString())
+      el('td',{}, el('span',{class:'tag dpa'}, r.dpa_status||'-')),
+      el('td',{}, el('span',{class:'tag pp'}, r.pp40_status||'-')),
+      el('td',{}, new Date(r.t).toLocaleTimeString())
     ])))
   ]);
-  dpaDiv.innerHTML = ''; dpaDiv.appendChild(tbl);
+  dpaDiv.innerHTML=''; dpaDiv.appendChild(tbl);
 }
 
-// ===== プリセット =====
-async function refreshPresets() {
-  const { data: { user } } = await supabase.auth.getUser();
-  presetSelect.innerHTML = '';
-  if (!user) return;
-  const { data } = await supabase.from('user_presets').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-  for (const p of (data || [])) {
-    const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; presetSelect.appendChild(opt);
+// ===== お気に入り =====
+async function toggleFav(raw){ const parkId=parseInt(parkSel.value,10); const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+  if(state.favorites.has(raw)){ await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId, attraction_name:raw }); state.favorites.delete(raw); }
+  else{ await supabase.from('user_favorites').upsert({ user_id:user.id, park_id:parkId, attraction_name:raw }); state.favorites.add(raw); }
+  renderFavs(); renderQT(); renderCountsEditor(); renderNowTips();
+}
+async function loadFavs(){ const parkId=parseInt(parkSel.value,10); const { data:{user} }=await supabase.auth.getUser(); state.favorites.clear();
+  if(user){ const { data } = await supabase.from('user_favorites').select('*').match({ user_id:user.id, park_id:parkId }); for(const r of (data||[])) state.favorites.add(r.attraction_name); }
+  renderFavs(); renderCountsEditor();
+}
+function renderFavs(){
+  const names = state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa);
+  document.getElementById('favs').textContent = names.length ? 'お気に入り：'+names.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
+}
+
+// ===== ルール保存/読込 =====
+async function loadRules(){
+  const { data:{user} }=await supabase.auth.getUser(); if(!user){ state.rules=null; return; }
+  const { data } = await supabase.from('user_alert_rules').select('*').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).maybeSingle();
+  const r = data || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
+  rCloseReopen.checked = !!r.notify_close_reopen; rDpaSale.checked = !!r.notify_dpa_sale; rSpike.value = r.spike_threshold; rWindow.value = r.window_minutes;
+}
+btnSaveRules.onclick=async()=>{ const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+  const row={ user_id:user.id, park_id:parseInt(parkSel.value,10), notify_close_reopen:rCloseReopen.checked, notify_dpa_sale:rDpaSale.checked, spike_threshold:Number(rSpike.value||20), window_minutes:Number(rWindow.value||10) };
+  await supabase.from('user_alert_rules').upsert(row,{ onConflict:'user_id,park_id' }); alert('保存しました');
+};
+
+// ===== DPA購入管理 =====
+async function loadPurchases(){ const { data:{user} }=await supabase.auth.getUser(); if(!user){ document.getElementById('purchases').innerHTML=''; return; }
+  const { data } = await supabase.from('dpa_purchases').select('*').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).order('slot_start');
+  state.purchases=data||[]; renderPurchases();
+}
+function renderPurchases(){
+  const box=document.getElementById('purchases'); box.innerHTML='';
+  const tbl=el('table',{},[
+    el('thead',{},el('tr',{},[el('th',{},'施設'),el('th',{},'時間帯'),el('th',{},'枚数'),el('th',{},'メモ'),el('th',{},'状態'),el('th',{},'操作')])),
+    el('tbody',{}, (state.purchases||[]).map(p=>el('tr',{},[
+      el('td',{},p.attraction_name),
+      el('td',{},`${new Date(p.slot_start).toLocaleTimeString()}〜${new Date(p.slot_end).toLocaleTimeString()}`),
+      el('td',{},String(p.quantity)),
+      el('td',{},p.note||''),
+      el('td',{}, p.used ? '使用済' : '未使用'),
+      el('td',{}, el('button',{onclick:async()=>{ await supabase.from('dpa_purchases').update({ used: !p.used }).eq('id',p.id); await loadPurchases(); }}, p.used?'未使用に戻す':'使用済にする'))
+    ])))
+  ]);
+  box.appendChild(tbl);
+}
+document.getElementById('btnAddPurchase').onclick=async()=>{
+  const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+  const row={ user_id:user.id, park_id:parseInt(parkSel.value,10), attraction_name:buyName.value, slot_start:new Date(buyStart.value).toISOString(), slot_end:new Date(buyEnd.value).toISOString(), quantity:Number(buyQty.value||1), note:buyNote.value||'' };
+  if(!row.attraction_name||!row.slot_start||!row.slot_end) return alert('値を確認してください');
+  await supabase.from('dpa_purchases').insert(row); buyName.value=''; buyNote.value=''; await loadPurchases(); alert('登録しました');
+};
+
+// ===== 手動スケジュール（回数指定） =====
+function renderCountsEditor(){
+  const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
+  countsDiv.innerHTML='';
+  if(!favs.length){ countsDiv.textContent='★で施設を選ぶと回数指定できます。'; return; }
+  const grid = el('div',{class:'grid3'});
+  for(const r of favs){
+    const area=AREA_MAP[parkSel.value]?.[r.nameJa] || '?';
+    grid.appendChild(el('div',{class:'row'},[
+      el('span',{}, r.nameJa +'（'+area+'）'),
+      el('input',{type:'number', min:'0', value:'1', id:`count-${r.nameRaw}`, class:'w120'})
+    ]));
   }
+  countsDiv.appendChild(grid);
 }
-document.getElementById('btnSavePreset').onclick = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return alert('ログインしてください');
-  const parkId = parseInt(parkSel.value, 10);
-  const items = Array.from(state.favorites).map(n=>({ name:n, count:1 }));
-  const name = presetName.value || 'プリセット';
-  await supabase.from('user_presets').insert({ user_id: user.id, name, park_id: parkId, items });
-  presetName.value=''; await refreshPresets(); alert('保存しました');
-};
-document.getElementById('btnLoadPreset').onclick = async () => {
-  const id = presetSelect.value; if (!id) return;
-  const { data } = await supabase.from('user_presets').select('*').eq('id', id).single();
-  if (!data) return;
-  state.favorites = new Set(data.items.map(x=>x.name));
-  renderFavs(); renderQT();
-};
-
-// ===== プランナー =====
-function generateDpaSlots(dateStr) {
-  const out = [];
-  for (let d = new Date(`${dateStr}T08:45:00`); d <= new Date(`${dateStr}T21:00:00`); d = new Date(d.getTime() + 15*60*1000)) {
-    out.push({ start: new Date(d), end: new Date(d.getTime() + 60*60*1000) });
+function areaOf(nameJa){ return AREA_MAP[parkSel.value]?.[nameJa] || '?'; }
+function optimizeByArea(list){
+  const out=[]; let curArea=null; const pool=list.slice(0);
+  while(pool.length){
+    const i = pool.findIndex(x=> areaOf(x.nameJa)===curArea);
+    const pick = i>=0 ? pool.splice(i,1)[0] : pool.shift();
+    out.push(pick); curArea = areaOf(pick.nameJa);
   }
   return out;
 }
-document.getElementById('btnPlan').onclick = () => {
-  const favs = state.qt.filter(x=> state.favorites.has(x.attraction_name));
-  if (!favs.length) { document.getElementById('planOut').textContent = '★で施設を選んでください'; return; }
-  const startTime = document.getElementById('startTime').value || '09:00';
-  const walk = parseInt(document.getElementById('walk').value,10) || 10;
-  const rideCount = parseInt(document.getElementById('rideCount').value,10) || favs.length;
+document.getElementById('btnPlan').onclick=async()=>{
+  const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+  const start = document.getElementById('startTime').value || '09:00';
+  const walk = Number(document.getElementById('walk').value||10);
   const today = new Date().toISOString().slice(0,10);
-  const slots = generateDpaSlots(today);
-
-  const sorted = favs.slice(0).sort((a,b)=>(b.wait_time||0)-(a.wait_time||0));
-  const dpaAssignCount = Math.min(Math.ceil(sorted.length/2), rideCount);
-  const dpaTargets = new Set(sorted.slice(0, dpaAssignCount).map(x=>x.attraction_name));
-
-  let cursor = new Date(`${today}T${startTime}:00`);
-  const steps = [];
-  for (let i=0;i<rideCount && i<favs.length;i++) {
-    const r = favs[i];
-    if (dpaTargets.has(r.attraction_name)) {
-      const s = slots.find(s=> s.start >= cursor && s.start <= new Date(cursor.getTime()+60*60*1000));
-      const when = s ? s.start : cursor;
-      steps.push(`${when.toTimeString().slice(0,5)} DPA利用 → ${r.attraction_name}（ウィンドウ: ${s ? s.start.toTimeString().slice(0,5)+'〜'+s.end.toTimeString().slice(0,5) : '即時'})`);
-      cursor = new Date((s ? s.end : new Date(cursor.getTime()+30*60*1000)).getTime() + walk*60*1000);
-    } else {
-      const w = r.wait_time || 20;
-      steps.push(`${cursor.toTimeString().slice(0,5)} スタンバイ → ${r.attraction_name}（${w}分）`);
-      cursor = new Date(cursor.getTime() + (w+walk)*60*1000);
-    }
+  const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
+  // 回数展開
+  let tasks=[];
+  for(const r of favs){
+    const n = Number(document.getElementById(`count-${r.nameRaw}`)?.value||0);
+    for(let i=0;i<n;i++) tasks.push(r);
   }
-  document.getElementById('planOut').textContent = steps.join('\n');
+  if(!tasks.length) return alert('回数が0です');
+  tasks = optimizeByArea(tasks); // 簡易エリア最適化
+  // タイムライン
+  let cursor=new Date(`${today}T${start}:00`);
+  const steps=[];
+  for(const t of tasks){
+    const useDpa = state.dpa.find(d=>d.name===t.nameJa && d.dpa_status==='販売中') ? true : false;
+    const dur = useDpa ? 20 : (t.wait||20);
+    steps.push({ name:t.nameJa, raw:t.nameRaw, method: useDpa?'DPA':'Standby', at:new Date(cursor), dur, area: areaOf(t.nameJa) });
+    cursor = new Date(cursor.getTime() + (dur+walk)*60000);
+  }
+  // 出力
+  planOut.textContent = steps.map(s=> `${s.at.toTimeString().slice(0,5)} ${s.method} → ${s.name}（${s.dur}分） [${s.area}]`).join('\n');
+  // 保存 + 共有リンク
+  const sched = { user_id:user.id, park_id:parseInt(parkSel.value,10), name:`手動スケジュール ${new Date().toLocaleTimeString()}` };
+  const { data:sch, error:e1 } = await supabase.from('user_schedules').insert(sched).select('id,share_token').single();
+  if(e1) return alert(e1.message);
+  const items = steps.map((s,i)=>({ schedule_id:sch.id, order_no:i+1, attraction_name:s.raw, method:s.method, planned_time:s.at.toISOString(), duration_min:s.dur, area:s.area }));
+  const { error:e2 } = await supabase.from('user_schedule_items').insert(items);
+  if(e2) return alert(e2.message);
+  const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token);
+  shareLink.innerHTML = `共有リンク： <a href="${url.toString()}">${url.toString()}</a>`;
 };
+
+// ===== 共有リンクでスケジュールを読む（閲覧専用） =====
+async function loadShared(){
+  const sp = new URLSearchParams(location.search); const token = sp.get('schedule'); if(!token) return;
+  const { data:sch } = await supabase.from('user_schedules').select('id,name').eq('share_token', token).single();
+  if(!sch) return;
+  const { data:items } = await supabase.from('user_schedule_items').select('*').eq('schedule_id', sch.id).order('order_no');
+  planOut.textContent = `📎 共有スケジュール: ${sch.name}\n` + items.map(s=> `${new Date(s.planned_time).toTimeString().slice(0,5)} ${s.method} → ${s.attraction_name}（${s.duration_min}分） [${s.area||''}]`).join('\n');
+}
 
 // ===== 通知フィード（最新20件 + Realtime） =====
-async function loadFeed() {
-  const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20);
-  renderFeed(data||[]);
-}
-function renderFeed(items) {
-  feedDiv.innerHTML = '';
-  for (const n of items) {
-    const row = el('div',{ class:'row' },[
-      el('span',{}, `[${new Date(n.created_at).toLocaleTimeString()}] ${n.title} - ${n.body}`)
-    ]);
-    feedDiv.appendChild(row);
-  }
-}
-supabase
-  .channel('table-db-changes')
-  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
-    renderFeed([payload.new, ...Array.from(feedDiv.children).map(x=>({ title:x.textContent, body:'', created_at:new Date().toISOString()}))]);
-  })
-  .subscribe();
+async function loadFeed(){ const { data } = await supabase.from('notifications').select('*').order('created_at',{ascending:false}).limit(20); renderFeed(data||[]); }
+function renderFeed(items){ feedDiv.innerHTML=''; for(const n of items){ feedDiv.appendChild(el('div',{class:'row'}, `[${new Date(n.created_at).toLocaleTimeString()}] ${n.title} - ${n.body}` )); } }
+supabase.channel('feed').on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},p=>{ feedDiv.prepend(el('div',{class:'row'}, `[${new Date(p.new.created_at).toLocaleTimeString()}] ${p.new.title} - ${p.new.body}` ));}).subscribe();
 
 // ===== Push購読 =====
-const btnNotify = document.getElementById('btnNotify');
-async function urlB64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64); const out = new Uint8Array(rawData.length);
-  for (let i=0;i<rawData.length;i++) out[i]=rawData.charCodeAt(i);
-  return out;
-}
-btnNotify.onclick = async () => {
-  if (!ENV.VAPID_PUBLIC_KEY) return alert('サーバ側の VAPID_PUBLIC_KEY が未設定です');
-  const reg = await navigator.serviceWorker.register('/sw.js');
-  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY) });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return alert('ログインしてください');
-  const resp = await fetch('/.netlify/functions/push-subscribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
-    body: JSON.stringify(sub.toJSON())
-  });
-  alert(resp.ok ? '通知を登録しました' : '通知登録に失敗しました');
+const btnNotify=document.getElementById('btnNotify');
+async function urlB64ToUint8Array(b){const p='='.repeat((4-b.length%4)%4);const base=(b+p).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base);const u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u;}
+btnNotify.onclick=async()=>{ if(!ENV.VAPID_PUBLIC_KEY) return alert('VAPID_PUBLIC_KEY未設定');
+  const reg=await navigator.serviceWorker.register('/sw.js');
+  const sub=await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY) });
+  const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+  const resp=await fetch('/.netlify/functions/push-subscribe',{ method:'POST', headers:{'Content-Type':'application/json','x-user-id':user.id}, body: JSON.stringify(sub.toJSON()) });
+  alert(resp.ok?'通知を登録しました':'通知登録に失敗しました');
 };
 
 // ===== ボタン配線 =====
-document.getElementById('btnRefresh').onclick = () => loadQT();
-// 背景関数をキック → 15秒待ってDPA再読込
-document.getElementById('btnFetchDpa').onclick = async () => {
-  await fetch('/.netlify/functions/ingest-tdr-dpa-background', { method: 'POST' }).catch(()=>{});
-  const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
-  await sleep(15000);
-  await loadDPA();
-};
+document.getElementById('btnRefresh').onclick=()=>{ loadQT(); renderNowTips(); };
+document.getElementById('btnFetchDpa').onclick=async()=>{ await fetch('/.netlify/functions/ingest-tdr-dpa-background',{method:'POST'}).catch(()=>{}); await new Promise(r=>setTimeout(r,15000)); await loadDPA(); };
+parkSel.onchange=async()=>{ await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await renderNowTips(); };
+[fDpaOnly,fKids,fMaxWait,sortBy].forEach(el=> el.onchange=()=>{renderQT();});
 
-parkSel.onchange = async () => { await loadFavs(); await loadQT(); };
-
-await loadFavs(); await loadQT(); await loadDPA(); await refreshPresets(); await loadFeed();
+await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadFeed();
 </script>
 </body>
 </html>
