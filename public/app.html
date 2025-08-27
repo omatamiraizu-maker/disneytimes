@@ -214,7 +214,7 @@ async function loadQT() {
   const { data, error } = await supabase
     .from('v_queue_times_latest')
     .select('name_ja, name_raw, is_open, wait_time, fetched_at')
-    .eq('park_id', parkId)
+    .eq('park_id', parseInt(parkSel.value,10))
     .limit(300);
   if (error) { qtDiv.textContent = error.message; return; }
 
