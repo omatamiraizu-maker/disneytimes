@@ -11,5 +11,6 @@
   cron = "* * * * *"
 
 [[scheduled.functions]]
-  name = "ingest-tdr-dpa"
+  name = "ingest-tdr-dpa-background"
   cron = "* * * * *"
+
