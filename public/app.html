@@ -3,30 +3,29 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>TDR DPAスケジュール & 通知アプリ</title>
+<title>TDR DPAスケジュール & 待ち時間 通知アプリ</title>
 <link rel="manifest" href="/manifest.json">
 <style>
-  :root { --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --mute:#94a3b8; --line:#1f2937;
-          --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; --chip:#0b1220; }
+  :root { --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --mute:#94a3b8; --line:#1f2937; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; }
   *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif}
-  a{color:var(--accent)}
-  header{position:sticky;top:0;background:#0b1220;border-bottom:1px solid var(--line);z-index:10}
+  a{color:var(--accent)} header{position:sticky;top:0;background:#0b1220;border-bottom:1px solid var(--line);z-index:10}
   .wrap{max-width:1100px;margin:0 auto;padding:14px}
   .g{display:grid;gap:12px} .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   input,select,button,textarea{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#0b1220;color:var(--ink);outline:none}
-  button{cursor:pointer}
-  .cta{background:var(--accent);color:#00111a;border:0;font-weight:800}
-  .chip{display:inline-flex;gap:8px;align-items:center;background:#0b1220;border:1px solid var(--line);border-radius:999px;padding:6px 10px}
+  button{cursor:pointer} .cta{background:var(--accent);color:#00111a;border:0;font-weight:800}
   .mut{color:var(--mute)} .mono{font-variant-numeric:tabular-nums}
   table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
   .tag{font-size:12px;border:1px solid var(--line);padding:2px 8px;border-radius:8px;color:var(--mute)}
   .tag.dpa{color:#93c5fd;border-color:#1e3a8a}
   .tag.pp{color:#a7f3d0;border-color:#064e3b}
   .good{color:var(--good)} .bad{color:var(--bad)}
-  .fav{cursor:pointer}
-  .plan{white-space:pre-wrap;background:#0b1220;border:1px dashed #334155;padding:10px;border-radius:12px}
+  .fav{cursor:pointer} .plan{white-space:pre-wrap;background:#0b1220;border:1px dashed #334155;padding:10px;border-radius:12px}
+  /* モーダル */
+  .modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center}
+  .modal.on{display:flex}
+  .card{background:#0b1220;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:320px;max-width:420px}
 </style>
 </head>
 <body>
@@ -35,7 +34,7 @@
     <div><strong>🧭 TDR DPA / 待ち時間 通知アプリ</strong> <span class="mut"></span></div>
     <div class="row">
       <span id="userEmail" class="mut"></span>
-      <button id="btnLogin" class="cta">ログイン</button>
+      <button id="btnOpenLogin" class="cta">ログイン / 新規登録</button>
       <button id="btnLogout">ログアウト</button>
     </div>
   </div>
@@ -49,8 +48,8 @@
         <option value="274">東京ディズニーランド</option>
         <option value="275">東京ディズニーシー</option>
       </select>
-      <button id="btnNotify" class="cta">プッシュ通知ON</button>
-      <span class="mut">（ブラウザ通知を許可し、端末登録）</span>
+      <button id="btnNotify" class="cta">プッシュ通知を有効化</button>
+      <span class="mut">（ブラウザの通知を許可してください）</span>
     </div>
   </section>
 
@@ -58,20 +57,21 @@
     <div class="panel">
       <h3 style="margin-top:0">⏱ 最新待ち時間（Supabase）</h3>
       <div class="row">
-        <button id="btnRefresh" class="cta">更新</button>
-        <span class="mut">自動更新：1分ごとにサーバが保存</span>
+        <button id="btnRefresh" class="cta">最新の待ち時間を表示</button>
+        <span class="mut">サーバが1分ごとに保存しています</span>
       </div>
       <div id="qt"></div>
     </div>
     <div class="panel">
-      <h3 style="margin-top:0">🎫 DPA / PP ステータス（公式サイト解析）</h3>
+      <h3 style="margin-top:0">🎫 DPA / PP ステータス（公式サイト）</h3>
       <div class="row">
-        <button id="btnFetchDpa" class="cta">最新取得</button>
-        <span class="mut">サーバが1分ごとに保存</span>
+        <button id="btnFetchDpa" class="cta">最新を取得（約15秒）</button>
+        <span class="mut">背景ジョブで取得後に表示更新します</span>
       </div>
       <div id="dpa"></div>
     </div>
   </section>
+
   <section class="panel">
     <h3 style="margin-top:0">⭐ お気に入り / プリセット</h3>
     <div class="row">
@@ -86,12 +86,12 @@
   <section class="panel">
     <h3 style="margin-top:0">📅 DPAスロット自動生成 & 行動プラン</h3>
     <div class="row">
-      <label>開始時刻</label><input id="startTime" type="time">
+      <label>開始時刻</label><input id="startTime" type="time" value="09:00">
       <label>徒歩/移動バッファ(分)</label><input id="walk" type="number" value="10" style="width:120px">
       <label>乗りたい合計数</label><input id="rideCount" type="number" value="4" style="width:120px">
       <button id="btnPlan" class="cta">プラン生成</button>
     </div>
-    <div class="row mut">スロットは8:45から15分間隔で1時間有効（シミュレータ）</div>
+    <div class="row mut">スロットは8:45から15分間隔で1時間有効（シミュレーション）</div>
     <div id="planOut" class="plan"></div>
   </section>
 
@@ -100,48 +100,71 @@
     <div id="feed"></div>
   </section>
 </main>
+
+<!-- ログインモーダル -->
+<div class="modal" id="loginModal">
+  <div class="card">
+    <h3 style="margin-top:0">ログイン / 新規登録</h3>
+    <p class="mut">メールアドレスを入力すると、ログイン用のリンクをお送りします。</p>
+    <div class="row"><input id="loginEmail" type="email" placeholder="your@email.com" style="flex:1"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px">
+      <button id="btnCloseLogin">閉じる</button>
+      <button id="btnSendLink" class="cta">リンクを送信</button>
+    </div>
+  </div>
+</div>
+
 <script src="/.netlify/functions/env"></script>
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
-// ======= ENV (set these in Netlify environment; we read from window.ENV injected or prompt fallback) =======
-const ENV = {
-  SUPABASE_URL: window.ENV?.SUPABASE_URL || prompt('SUPABASE_URL'),
-  SUPABASE_ANON_KEY: window.ENV?.SUPABASE_ANON_KEY || prompt('SUPABASE_ANON_KEY'),
-  VAPID_PUBLIC_KEY: window.ENV?.VAPID_PUBLIC_KEY || prompt('VAPID_PUBLIC_KEY (WebPush 公開鍵)')
-};
+const ENV = window.ENV || {};
 const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY);
 
-// ======= Auth =======
-const btnLogin = document.getElementById('btnLogin');
-const btnLogout = document.getElementById('btnLogout');
+// ===== ログインUI =====
 const userEmail = document.getElementById('userEmail');
+const btnOpenLogin = document.getElementById('btnOpenLogin');
+const btnLogout = document.getElementById('btnLogout');
+const loginModal = document.getElementById('loginModal');
+const loginEmail = document.getElementById('loginEmail');
+const btnCloseLogin = document.getElementById('btnCloseLogin');
+const btnSendLink = document.getElementById('btnSendLink');
+
+function openLogin(){ loginModal.classList.add('on'); loginEmail.focus(); }
+function closeLogin(){ loginModal.classList.remove('on'); }
+
+btnOpenLogin.onclick = openLogin;
+btnCloseLogin.onclick = closeLogin;
+
+btnSendLink.onclick = async () => {
+  const email = (loginEmail.value || '').trim();
+  if (!email) return alert('メールアドレスを入力してください');
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: location.origin + '/app.html' }
+  });
+  if (error) alert(error.message);
+  else { alert('メールを送信しました。届いたリンクを開くとログイン完了です。'); closeLogin(); }
+};
+
+btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 
 async function refreshAuthUI() {
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     userEmail.textContent = user.email || '(ログイン中)';
-    btnLogin.style.display = 'none';
+    btnOpenLogin.style.display = 'none';
     btnLogout.style.display = 'inline-block';
   } else {
     userEmail.textContent = '';
-    btnLogin.style.display = 'inline-block';
+    btnOpenLogin.style.display = 'inline-block';
     btnLogout.style.display = 'none';
   }
 }
-
-btnLogin.onclick = async () => {
-  const email = prompt('メールアドレス（マジックリンク送信）');
-  if (!email) return;
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/app.html' } });
-  if (error) alert(error.message); else alert('メールを確認してください');
-};
-btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
-
 await refreshAuthUI();
 supabase.auth.onAuthStateChange(refreshAuthUI);
 
-// ======= Helpers =======
+// ===== 共通DOM =====
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
 const dpaDiv = document.getElementById('dpa');
@@ -150,7 +173,6 @@ const presetName = document.getElementById('presetName');
 const presetSelect = document.getElementById('presetSelect');
 
 const state = { favorites: new Set(), qt: [], dpa: [] };
-
 function el(tag, attrs={}, children=[]) {
   const e = document.createElement(tag);
   for (const [k,v] of Object.entries(attrs)) {
@@ -158,36 +180,25 @@ function el(tag, attrs={}, children=[]) {
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else e.setAttribute(k,v);
   }
-  for (const c of (Array.isArray(children) ? children : [children])) {
-    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-  }
+  for (const c of (Array.isArray(children) ? children : [children])) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
   return e;
 }
 
-// ======= Fetch: Queue-Times (from Supabase latest snapshots) =======
+// ===== 待ち時間（最新） =====
 async function loadQT() {
   const parkId = parseInt(parkSel.value, 10);
-  // latest per attraction_name
   const { data, error } = await supabase
     .from('queue_times')
     .select('attraction_name, is_open, wait_time, fetched_at')
     .eq('park_id', parkId)
     .order('fetched_at', { ascending: false })
-    .limit(500);
+    .limit(600);
   if (error) { qtDiv.textContent = error.message; return; }
-
-  // Reduce to most recent per attraction
-  const seen = new Set();
-  const latest = [];
-  for (const row of data) {
-    if (seen.has(row.attraction_name)) continue;
-    seen.add(row.attraction_name);
-    latest.push(row);
-  }
-  state.qt = latest.sort((a,b)=> (a.attraction_name > b.attraction_name?1:-1));
+  const seen = new Set(); const latest = [];
+  for (const row of data) { if (seen.has(row.attraction_name)) continue; seen.add(row.attraction_name); latest.push(row); }
+  state.qt = latest.sort((a,b)=> a.attraction_name.localeCompare(b.attraction_name,'ja'));
   renderQT();
 }
-
 function renderQT() {
   const tbl = el('table',{},[
     el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設'), el('th',{},'待ち'), el('th',{},'状態')])),
@@ -204,7 +215,6 @@ function renderQT() {
   qtDiv.innerHTML = ''; qtDiv.appendChild(tbl);
   renderFavs();
 }
-
 async function toggleFav(name) {
   const parkId = parseInt(parkSel.value, 10);
   const { data: { user } } = await supabase.auth.getUser();
@@ -218,7 +228,6 @@ async function toggleFav(name) {
   }
   renderFavs(); renderQT();
 }
-
 async function loadFavs() {
   const parkId = parseInt(parkSel.value, 10);
   const { data: { user } } = await supabase.auth.getUser();
@@ -230,33 +239,26 @@ async function loadFavs() {
   renderFavs();
 }
 function renderFavs() {
-  if (!state.qt.length) { document.getElementById('favs').textContent = 'データ未取得'; return; }
   const favs = state.qt.filter(x=> state.favorites.has(x.attraction_name)).map(x=>x.attraction_name);
   document.getElementById('favs').textContent = favs.length ? 'お気に入り：' + favs.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
 }
 
-// ======= Fetch: DPA statuses =======
+// ===== DPA/PP ステータス（最新） =====
 async function loadDPA() {
-  // latest snapshot per attraction (take last rows)
   const parkCode = parkSel.value === '274' ? 'TDL' : 'TDS';
-  // join attractions + latest status
-  const { data: attrs } = await supabase.from('attractions').select('id, name, park_id').in('park_id',
-    (await supabase.from('parks').select('id').eq('code', parkCode)).data?.map(p=>p.id) || []
-  );
-  if (!attrs) { dpaDiv.textContent = 'attractions なし'; return; }
-
+  const { data: parks } = await supabase.from('parks').select('id,code').eq('code', parkCode);
+  if (!parks?.length) { dpaDiv.textContent = 'parks なし'; return; }
+  const parkId = parks[0].id;
+  const { data: attrs } = await supabase.from('attractions').select('id, name, park_id').eq('park_id', parkId);
   const latest = [];
-  for (const a of attrs) {
-    const { data: rows } = await supabase.from('attraction_status')
-       .select('dpa_status, pp40_status, fetched_at').eq('attraction_id', a.id)
-       .order('fetched_at', { ascending:false }).limit(1);
+  for (const a of attrs || []) {
+    const { data: rows } = await supabase.from('attraction_status').select('dpa_status, pp40_status, fetched_at').eq('attraction_id', a.id).order('fetched_at', { ascending:false }).limit(1);
     if (rows && rows[0]) latest.push({ name: a.name, ...rows[0] });
   }
   latest.sort((x,y)=> x.name.localeCompare(y.name,'ja'));
   state.dpa = latest;
   renderDPA();
 }
-
 function renderDPA() {
   const tbl = el('table',{},[
     el('thead',{}, el('tr',{},[el('th',{},'施設'), el('th',{},'DPA'), el('th',{},'PP(40th)'), el('th',{},'更新')])),
@@ -270,7 +272,7 @@ function renderDPA() {
   dpaDiv.innerHTML = ''; dpaDiv.appendChild(tbl);
 }
 
-// ======= Presets =======
+// ===== プリセット =====
 async function refreshPresets() {
   const { data: { user } } = await supabase.auth.getUser();
   presetSelect.innerHTML = '';
@@ -297,20 +299,15 @@ document.getElementById('btnLoadPreset').onclick = async () => {
   renderFavs(); renderQT();
 };
 
-// ======= Planner =======
+// ===== プランナー =====
 function generateDpaSlots(dateStr) {
-  // Generate 8:45 to 21:00 by 15m, each valid for 1h
   const out = [];
-  let start = new Date(dateStr + 'T08:45:00');
-  const end = new Date(dateStr + 'T21:00:00');
-  for (let d = new Date(start); d <= end; d = new Date(d.getTime() + 15*60*1000)) {
+  for (let d = new Date(`${dateStr}T08:45:00`); d <= new Date(`${dateStr}T21:00:00`); d = new Date(d.getTime() + 15*60*1000)) {
     out.push({ start: new Date(d), end: new Date(d.getTime() + 60*60*1000) });
   }
   return out;
 }
-
 document.getElementById('btnPlan').onclick = () => {
-  const parkId = parseInt(parkSel.value, 10);
   const favs = state.qt.filter(x=> state.favorites.has(x.attraction_name));
   if (!favs.length) { document.getElementById('planOut').textContent = '★で施設を選んでください'; return; }
   const startTime = document.getElementById('startTime').value || '09:00';
@@ -319,9 +316,8 @@ document.getElementById('btnPlan').onclick = () => {
   const today = new Date().toISOString().slice(0,10);
   const slots = generateDpaSlots(today);
 
-  // Greedy: use DPA for top waits if possible
   const sorted = favs.slice(0).sort((a,b)=>(b.wait_time||0)-(a.wait_time||0));
-  const dpaAssignCount = Math.min( Math.ceil(sorted.length/2), rideCount ); // simple heuristic
+  const dpaAssignCount = Math.min(Math.ceil(sorted.length/2), rideCount);
   const dpaTargets = new Set(sorted.slice(0, dpaAssignCount).map(x=>x.attraction_name));
 
   let cursor = new Date(`${today}T${startTime}:00`);
@@ -329,10 +325,9 @@ document.getElementById('btnPlan').onclick = () => {
   for (let i=0;i<rideCount && i<favs.length;i++) {
     const r = favs[i];
     if (dpaTargets.has(r.attraction_name)) {
-      // find next slot whose window includes cursor+walk ~ cursor+walk+30m
       const s = slots.find(s=> s.start >= cursor && s.start <= new Date(cursor.getTime()+60*60*1000));
       const when = s ? s.start : cursor;
-      steps.push(`${when.toTimeString().slice(0,5)} DPA利用 → ${r.attraction_name}（入場ウィンドウ: ${s ? s.start.toTimeString().slice(0,5)+'〜'+s.end.toTimeString().slice(0,5) : '即時'})`);
+      steps.push(`${when.toTimeString().slice(0,5)} DPA利用 → ${r.attraction_name}（ウィンドウ: ${s ? s.start.toTimeString().slice(0,5)+'〜'+s.end.toTimeString().slice(0,5) : '即時'})`);
       cursor = new Date((s ? s.end : new Date(cursor.getTime()+30*60*1000)).getTime() + walk*60*1000);
     } else {
       const w = r.wait_time || 20;
@@ -343,7 +338,7 @@ document.getElementById('btnPlan').onclick = () => {
   document.getElementById('planOut').textContent = steps.join('\n');
 };
 
-// ======= Notifications feed (Supabase Realtime) =======
+// ===== 通知フィード（最新20件 + Realtime） =====
 async function loadFeed() {
   const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20);
   renderFeed(data||[]);
@@ -351,13 +346,12 @@ async function loadFeed() {
 function renderFeed(items) {
   feedDiv.innerHTML = '';
   for (const n of items) {
-    const row = el('div',{ class:'chip' },[
+    const row = el('div',{ class:'row' },[
       el('span',{}, `[${new Date(n.created_at).toLocaleTimeString()}] ${n.title} - ${n.body}`)
     ]);
     feedDiv.appendChild(row);
   }
 }
-// Realtime subscription
 supabase
   .channel('table-db-changes')
   .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
@@ -365,44 +359,41 @@ supabase
   })
   .subscribe();
 
-// ======= Push subscription =======
+// ===== Push購読 =====
 const btnNotify = document.getElementById('btnNotify');
 async function urlB64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-  return outputArray;
+  const rawData = atob(base64); const out = new Uint8Array(rawData.length);
+  for (let i=0;i<rawData.length;i++) out[i]=rawData.charCodeAt(i);
+  return out;
 }
 btnNotify.onclick = async () => {
+  if (!ENV.VAPID_PUBLIC_KEY) return alert('サーバ側の VAPID_PUBLIC_KEY が未設定です');
   const reg = await navigator.serviceWorker.register('/sw.js');
-  const sub = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY)
-  });
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY) });
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return alert('ログインしてください');
-  // send to function
   const resp = await fetch('/.netlify/functions/push-subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
     body: JSON.stringify(sub.toJSON())
   });
-  alert(resp.ok ? '登録しました' : '登録に失敗しました');
+  alert(resp.ok ? '通知を登録しました' : '通知登録に失敗しました');
 };
 
-// ======= Wire up buttons =======
+// ===== ボタン配線 =====
 document.getElementById('btnRefresh').onclick = () => loadQT();
+// 背景関数をキック → 15秒待ってDPA再読込
 document.getElementById('btnFetchDpa').onclick = async () => {
-  // 裏で実行をキック
   await fetch('/.netlify/functions/ingest-tdr-dpa-background', { method: 'POST' }).catch(()=>{});
-  // 少し待ってから最新を読む（必要なら待機時間を長めに）
   const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
   await sleep(15000);
   await loadDPA();
 };
+
 parkSel.onchange = async () => { await loadFavs(); await loadQT(); };
+
 await loadFavs(); await loadQT(); await loadDPA(); await refreshPresets(); await loadFeed();
 </script>
 </body>
