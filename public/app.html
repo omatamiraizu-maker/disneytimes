@@ -1005,7 +1005,9 @@ btnNotify.onclick=async()=>{
 };
 
 // ===== ボタン配線 =====
-document.getElementById('btnRefresh').onclick=()=>{ loadQT(true); renderNowTips(); };
+document.getElementById('btnRefresh').onclick = async () => {
+  await loadQT(true);   // 中で renderNowTips() まで実行される
+};
 document.getElementById('btnFetchDpa').onclick=async()=>{ await fetch('/.netlify/functions/ingest-tdr-dpa-background',{method:'POST'}).catch(()=>{}); await new Promise(r=>setTimeout(r,15000)); await loadDPA(); };
 parkSel.onchange = async () => {
   await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases();
