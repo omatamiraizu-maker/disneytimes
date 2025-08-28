@@ -179,8 +179,30 @@
   <div class="card">
     <h3 style="margin-top:0">ログイン / 新規登録</h3>
     <p class="mut">メールアドレスを入力すると、ログイン用のリンクをお送りします。</p>
-    <div class="row"><input id="loginEmail" type="email" placeholder="your@email.com" style="flex:1"></div>
-    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px">
+
+    <!-- ここはメールリンク用の行（ID付与） -->
+    <div class="row" id="emailRow">
+      <input id="loginEmail" type="email" placeholder="your@email.com" style="flex:1">
+    </div>
+
+    <!-- 追加：ログイン方式の切替 -->
+    <div class="row" style="gap:6px;margin-top:8px">
+      <label class="pill"><input type="radio" name="loginMode" id="modeEmail" checked> メールリンク</label>
+      <label class="pill"><input type="radio" name="loginMode" id="modePw"> ID/パスワード</label>
+    </div>
+
+    <!-- 追加：ID/パスワードボックス（初期は非表示） -->
+    <div id="pwBox" style="display:none;margin-top:8px">
+      <div class="row"><input id="loginId" placeholder="メール or ユーザーID" style="flex:1"></div>
+      <div class="row"><input id="loginPw" type="password" placeholder="パスワード" style="flex:1"></div>
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button id="btnSigninPw" class="cta">ログイン</button>
+        <button id="btnSignupPw">新規登録</button>
+      </div>
+    </div>
+
+    <!-- ここはメールリンク送信用のボタン行（ID付与） -->
+    <div class="row" id="emailActionRow" style="justify-content:flex-end;gap:8px;margin-top:8px">
       <button id="btnCloseLogin">閉じる</button>
       <button id="btnSendLink" class="cta">リンクを送信</button>
     </div>
@@ -251,31 +273,99 @@ btnInstall.onclick = async()=>{
   deferredPrompt = null;
 };
 
-// ===== ログインUI =====
-const userEmail=document.getElementById('userEmail');
-const btnOpenLogin=document.getElementById('btnOpenLogin');
-const btnLogout=document.getElementById('btnLogout');
-const loginModal=document.getElementById('loginModal');
-const loginEmail=document.getElementById('loginEmail');
-document.getElementById('btnCloseLogin').onclick=()=>loginModal.classList.remove('on');
-btnOpenLogin.onclick=()=>{loginModal.classList.add('on'); loginEmail.focus();};
-btnLogout.onclick=async()=>{await supabase.auth.signOut(); location.reload();};
+// ===== ログインUI（メールリンク / ID+パスワード 両対応）=====
+const userEmail = document.getElementById('userEmail');
+const btnOpenLogin = document.getElementById('btnOpenLogin');
+const btnLogout = document.getElementById('btnLogout');
+const loginModal = document.getElementById('loginModal');
 
-document.getElementById('btnSendLink').onclick=async()=>{
-  const email=(loginEmail.value||'').trim(); if(!email) return alert('メールを入力');
+// メール方式の要素
+const loginEmail = document.getElementById('loginEmail');
+const emailRow = document.getElementById('emailRow');               // ← モーダルHTMLに追加したID
+const emailActionRow = document.getElementById('emailActionRow');   // ← モーダルHTMLに追加したID
+const btnSendLink = document.getElementById('btnSendLink');
+
+// 方式切替 / IDパス方式の要素
+const modeEmail = document.getElementById('modeEmail'); // ラジオ
+const modePw    = document.getElementById('modePw');    // ラジオ
+const pwBox     = document.getElementById('pwBox');
+const loginId   = document.getElementById('loginId');
+const loginPw   = document.getElementById('loginPw');
+const btnSigninPw = document.getElementById('btnSigninPw');
+const btnSignupPw = document.getElementById('btnSignupPw');
+
+document.getElementById('btnCloseLogin').onclick = () => loginModal.classList.remove('on');
+btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
+
+// モード適用
+function applyLoginMode(){
+  const usePw = modePw?.checked;
+  if (pwBox) pwBox.style.display = usePw ? 'block' : 'none';
+  if (emailRow) emailRow.style.display = usePw ? 'none' : 'flex';
+  if (emailActionRow) emailActionRow.style.display = usePw ? 'none' : 'flex';
+}
+if (modeEmail && modePw){
+  modeEmail.onchange = modePw.onchange = applyLoginMode;
+}
+
+// モーダルを開く時点で既定は「メール方式」
+btnOpenLogin.onclick = () => {
+  if (modeEmail) modeEmail.checked = true;
+  if (modePw) modePw.checked = false;
+  applyLoginMode();
+  loginModal.classList.add('on');
+  if (loginEmail) loginEmail.focus();
+};
+
+// --- メールリンク方式（既存のロジックを踏襲） ---
+btnSendLink.onclick = async () => {
+  const email = (loginEmail?.value || '').trim();
+  if (!email) return alert('メールを入力');
+
   let { error } = await supabase.auth.signInWithOtp({
-    email, options:{ emailRedirectTo: location.origin+'/app.html', shouldCreateUser:false }
+    email,
+    options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false }
   });
+
   if (error && /user.*not.*found|invalid login|No account/i.test(error.message)) {
-    const r1 = await supabase.auth.signUp({ email, options:{ emailRedirectTo: location.origin+'/app.html' } });
+    const r1 = await supabase.auth.signUp({ email, options: { emailRedirectTo: location.origin + '/app.html' } });
     if (r1.error) return alert(r1.error.message);
     error = null;
   }
   if (error && /Database error saving new user|duplicate key|partial_key/i.test(error.message)) {
-    const r2 = await supabase.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin+'/app.html', shouldCreateUser:false } });
+    const r2 = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false } });
     if (r2.error) return alert(r2.error.message);
   }
-  alert('ログイン用メールを送信しました。'); loginModal.classList.remove('on');
+
+  alert('ログイン用メールを送信しました。');
+  loginModal.classList.remove('on');
+};
+
+// --- ID / パスワード方式（簡易版：ID=メールとして扱う） ---
+if (btnSigninPw) btnSigninPw.onclick = async () => {
+  const id = (loginId?.value || '').trim();
+  const pw = (loginPw?.value || '').trim();
+  if (!id || !pw) return alert('ID/パスワードを入力してください');
+
+  // 簡易運用：ID=メールとして扱う（本格導入は username→email 解決のEdge Functionを別途用意）
+  if (!id.includes('@')) return alert('この簡易実装では ID=メール として扱います。メールでお試しください。');
+
+  const { error } = await supabase.auth.signInWithPassword({ email: id, password: pw });
+  if (error) return alert(error.message);
+  loginModal.classList.remove('on');
+};
+
+if (btnSignupPw) btnSignupPw.onclick = async () => {
+  const id = (loginId?.value || '').trim();
+  const pw = (loginPw?.value || '').trim();
+  if (!id || !pw) return alert('ID/パスワードを入力してください');
+
+  if (!id.includes('@')) return alert('この簡易実装ではメールアドレスで登録してください（ユーザーIDは後から設定できます）');
+
+  const { error } = await supabase.auth.signUp({ email: id, password: pw });
+  if (error) return alert(error.message);
+  alert('登録しました。届いた確認メールをご確認ください。');
+  loginModal.classList.remove('on');
 };
 
 async function refreshAuthUI(){
