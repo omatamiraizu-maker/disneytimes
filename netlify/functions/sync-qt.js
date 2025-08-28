@@ -138,7 +138,19 @@ export const handler = async () => {
           const prev = latestByName.get(cur.attraction_name);
           const watchers = Array.from(usersByAttr.get(cur.attraction_name) || []);
           if (!prev || !watchers.length) continue;
-
+        
+          // ===== 営業時間チェック（8:30-21:00）=====
+          const now = new Date();
+          const hour = now.getHours();
+          const minute = now.getMinutes();
+          const currentTime = hour * 60 + minute; // 分単位に変換
+          
+          // 8:30（510分）より前、または21:00（1260分）以降は通知をスキップ
+          if (currentTime < 510 || currentTime >= 1260) {
+            console.log(`Skipping notification outside operating hours (${hour}:${minute.toString().padStart(2,'0')})`);
+            continue;
+          }
+        
           const openChanged = prev.is_open !== cur.is_open;
           const waitPrev = (typeof prev.wait_time==='number') ? prev.wait_time : null;
           const waitCur  = (typeof cur.wait_time==='number') ? cur.wait_time : null;
