@@ -1,4 +1,6 @@
 // netlify/functions/sync-qt.js
+// Queue-Times を取得して Supabase に保存（スケジュール/手動実行）
+
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
 
@@ -43,7 +45,11 @@ async function fetchQT(parkId){
 
 async function sendPushToUsers(sb, userIds, title, body, meta = {}){
   if (!userIds?.length) return { sent:0 };
-  await sb.from('notifications').insert(userIds.map(uid => ({ user_id:uid, kind:meta.kind||'info', title, body, meta })));
+  try {
+    await sb.from('notifications').insert(userIds.map(uid => ({
+      user_id: uid, kind: meta.kind||'info', title, body, meta
+    })));
+  } catch {}
   const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', userIds);
   let sent=0; const payload = JSON.stringify({ title, body, meta });
   for (const s of subs||[]){
@@ -56,103 +62,123 @@ async function sendPushToUsers(sb, userIds, title, body, meta = {}){
 export const handler = async () => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth:{ persistSession:false } });
 
-  // ★関数ハートビート（起動）
-  try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:true }); } catch {}
+  // ★開始ハートビート
+  try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:true, note:'start' }); } catch {}
 
-  const { data: parks } = await sb.from('parks').select('id, code, qt_park_id');
-  const parksByQt = Object.fromEntries((parks||[]).map(p=>[p.qt_park_id, p]));
   const results = [];
+  try {
+    // parks マスタ取得（qt_park_id で突合）
+    const { data: parks, error: parksErr } = await sb.from('parks').select('id, code, qt_park_id');
+    if (parksErr) throw parksErr;
+    const parksByQt = Object.fromEntries((parks||[]).map(p=>[p.qt_park_id, p]));
 
-  for (const qtParkId of QT_PARKS){
-    try{
-      const park = parksByQt[qtParkId];
-      if (!park) throw new Error(`parks not found for qt_park_id=${qtParkId}`);
+    for (const qtParkId of QT_PARKS){
+      try{
+        const park = parksByQt[qtParkId];
+        if (!park) throw new Error(`parks not found for qt_park_id=${qtParkId}`);
 
-      const data = await fetchQT(qtParkId);
+        const data = await fetchQT(qtParkId);
 
-      // 直近の状態（施設ごと最新1件）
-      const { data: prevRows } = await sb
-        .from('queue_times')
-        .select('attraction_name, is_open, wait_time, fetched_at')
-        .eq('park_id', qtParkId)
-        .order('fetched_at', { ascending:false })
-        .limit(1000);
+        // 直近の最新レコード（通知比較用）
+        const { data: prevRows } = await sb
+          .from('queue_times')
+          .select('attraction_name, is_open, wait_time, fetched_at')
+          .eq('park_id', qtParkId)
+          .order('fetched_at', { ascending:false })
+          .limit(1000);
 
-      const latestByName = new Map();
-      for (const row of prevRows||[]){
-        if (!latestByName.has(row.attraction_name)) latestByName.set(row.attraction_name, row);
-      }
-
-      // rides 抽出
-      const rides = [];
-      if (Array.isArray(data?.lands)) for (const land of data.lands) for (const ride of land.rides||[]) rides.push(ride);
-      if (Array.isArray(data?.rides)) for (const r of data.rides) rides.push(r);
-
-      // INSERT（※ fetched_at は DB の default now() で良いが、明示するなら nowIso を入れる）
-      const nowIso = new Date().toISOString();
-      const rows = rides.map(ride => ({
-        park_id: qtParkId,
-        attraction_name: ride.name,
-        is_open: !!ride.is_open,
-        wait_time: (typeof ride.wait_time==='number') ? ride.wait_time : null,
-        fetched_at: nowIso              // ★ テーブルに合わせてこれだけ
-      }));
-      if (rows.length){
-        const { error } = await sb.from('queue_times').insert(rows);
-        if (error) throw error;
-      }
-
-      // お気に入り通知
-      const { data: favs } = await sb
-        .from('user_favorites')
-        .select('user_id, attraction_name')
-        .eq('park_id', qtParkId);
-
-      const usersByAttr = new Map();
-      for (const f of favs||[]){
-        if (!usersByAttr.has(f.attraction_name)) usersByAttr.set(f.attraction_name, new Set());
-        usersByAttr.get(f.attraction_name).add(f.user_id);
-      }
-
-      let notified=0;
-      for (const cur of rows){
-        const prev = latestByName.get(cur.attraction_name);
-        const watchers = Array.from(usersByAttr.get(cur.attraction_name) || []);
-        if (!prev) continue;
-
-        const openChanged = prev.is_open !== cur.is_open;
-        const waitPrev = (typeof prev.wait_time==='number') ? prev.wait_time : null;
-        const waitCur  = (typeof cur.wait_time==='number') ? cur.wait_time : null;
-        const waitDelta = (waitPrev!=null && waitCur!=null) ? (waitCur - waitPrev) : 0;
-        const spike = Math.abs(waitDelta) >= 20;
-
-        if (openChanged && watchers.length){
-          const title = cur.is_open ? `【運営再開】${cur.attraction_name}` : `【運営中止】${cur.attraction_name}`;
-          const body  = cur.is_open ? `現在の待ち時間: ${waitCur ?? '-'}分` : '現在、運営が中止されています。';
-          await sendPushToUsers(sb, watchers, title, body, {
-            kind: cur.is_open ? 'ride-reopen':'ride-closed',
-            park_qt_id: qtParkId, name: cur.attraction_name, wait: waitCur
-          });
-          notified++;
-        }else if (spike && watchers.length){
-          const title = `【待ち時間急変】${cur.attraction_name}`;
-          const body  = `待ち時間が ${waitPrev ?? '-'}→${waitCur ?? '-'} 分（${waitDelta>0?'+':''}${waitDelta}分）`;
-          await sendPushToUsers(sb, watchers, title, body, {
-            kind:'qt-spike', park_qt_id:qtParkId, name:cur.attraction_name, prev:waitPrev, cur:waitCur, delta:waitDelta
-          });
-          notified++;
+        const latestByName = new Map();
+        for (const row of prevRows||[]){
+          if (!latestByName.has(row.attraction_name)) latestByName.set(row.attraction_name, row);
         }
+
+        // rides 抽出
+        const rides = [];
+        if (Array.isArray(data?.lands)) for (const land of data.lands) for (const ride of land.rides||[]) rides.push(ride);
+        if (Array.isArray(data?.rides)) for (const r of data.rides) rides.push(r);
+
+        // INSERT
+        const nowIso = new Date().toISOString();
+        const rows = rides.map(ride => ({
+          park_id: qtParkId,
+          attraction_name: ride.name,
+          is_open: !!ride.is_open,
+          wait_time: (typeof ride.wait_time==='number') ? ride.wait_time : null,
+          fetched_at: nowIso
+        }));
+        if (rows.length){
+          const { error } = await sb.from('queue_times').insert(rows);
+          if (error) throw error;
+        }
+
+        // お気に入り通知
+        const { data: favs } = await sb
+          .from('user_favorites')
+          .select('user_id, attraction_name')
+          .eq('park_id', qtParkId);
+
+        const usersByAttr = new Map();
+        for (const f of (favs||[])){
+          if (!usersByAttr.has(f.attraction_name)) usersByAttr.set(f.attraction_name, new Set());
+          usersByAttr.get(f.attraction_name).add(f.user_id);
+        }
+
+        let notified=0;
+        for (const cur of rows){
+          const prev = latestByName.get(cur.attraction_name);
+          const watchers = Array.from(usersByAttr.get(cur.attraction_name) || []);
+          if (!prev) continue;
+
+          const openChanged = prev.is_open !== cur.is_open;
+          const waitPrev = (typeof prev.wait_time==='number') ? prev.wait_time : null;
+          const waitCur  = (typeof cur.wait_time==='number') ? cur.wait_time : null;
+          const waitDelta = (waitPrev!=null && waitCur!=null) ? (waitCur - waitPrev) : 0;
+          const spike = Math.abs(waitDelta) >= 20;
+
+          if (openChanged && watchers.length){
+            const title = cur.is_open ? `【運営再開】${cur.attraction_name}` : `【運営中止】${cur.attraction_name}`;
+            const body  = cur.is_open ? `現在の待ち時間: ${waitCur ?? '-'}分` : '現在、運営が中止されています。';
+            await sendPushToUsers(sb, watchers, title, body, {
+              kind: cur.is_open ? 'ride-reopen':'ride-closed',
+              park_qt_id: qtParkId, name: cur.attraction_name, wait: waitCur
+            });
+            notified++;
+          }else if (spike && watchers.length){
+            const title = `【待ち時間急変】${cur.attraction_name}`;
+            const body  = `待ち時間が ${waitPrev ?? '-'}→${waitCur ?? '-'} 分（${waitDelta>0?'+':''}${waitDelta}分）`;
+            await sendPushToUsers(sb, watchers, title, body, {
+              kind:'qt-spike', park_qt_id:qtParkId, name:cur.attraction_name, prev:waitPrev, cur:waitCur, delta:waitDelta
+            });
+            notified++;
+          }
+        }
+
+        results.push({ parkId: qtParkId, ok:true, count: rows.length, notified });
+      }catch(e){
+        // park単位の失敗は結果に残し、関数自体は継続
+        results.push({ parkId: qtParkId, ok:false, error: errStr(e) });
+        try {
+          await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note:`park ${qtParkId}: ${errStr(e)}` });
+        } catch {}
       }
-
-      results.push({ parkId: qtParkId, ok:true, count: rows.length, notified });
-    }catch(e){
-      // ★失敗も心拍に記録
-      try {
-        await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note: errStr(e) });
-      } catch {}
-      results.push({ parkId: qtParkId, ok:false, error: errStr(e) });
     }
-  }
 
-  return { statusCode:200, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ results }) };
+    // ★完了ハートビート（ここが“正しい位置”）
+    try {
+      await sb.from('function_heartbeats').insert({
+        name: 'sync-qt',
+        ok: true,
+        note: JSON.stringify(results).slice(0, 500)
+      });
+    } catch {}
+
+    return { statusCode:200, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ results }) };
+
+  } catch (e) {
+    // ★外側の致命的失敗（parks取得等）はここで記録
+    try {
+      await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note: errStr(e) });
+    } catch {}
+    return { statusCode:500, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ok:false, error: errStr(e) }) };
+  }
 };
