@@ -24,6 +24,18 @@ self.addEventListener('fetch', (e) => {
     );
   }
 });
+
+// 新しいSWを即有効化して古いのを置き換える
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+
+// ページ側から「SKIP_WAITING」メッセージを受けたら即適用
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 // ADD: Push 受信 → 通知表示（iOS PWA 必須）
 self.addEventListener('push', (event) => {
   let data = {};
