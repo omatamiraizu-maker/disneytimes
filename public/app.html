@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>TDR DPA & 待ち時間 通知アプリ</title>
 <link rel="manifest" href="/manifest.json">
 <style>
@@ -27,6 +30,14 @@
   .modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center}
   .modal.on{display:flex}
   .card{background:#0b1220;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:320px;max-width:420px}
+  @media (max-width: 720px){
+  .g2{ grid-template-columns: 1fr; }
+  header .row{ gap:6px; flex-wrap:wrap; }
+  .row{ gap:6px; }
+  input,select,button{ font-size:16px; } /* iOS の勝手なズーム防止 */
+  table{ display:block; overflow-x:auto; white-space:nowrap; font-size:14px; }
+  th,td{ padding:6px 4px; }
+  }
 </style>
 </head>
 <body>
@@ -181,12 +192,64 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
 const ENV = window.ENV || {};
-const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY);
+
+// localStorage が使えない(iOSプライベート/容量切れ)時のフォールバック
+const safeStorage = (()=> {
+  try { const t='__t__'; localStorage.setItem(t,'1'); localStorage.removeItem(t); return localStorage; }
+  catch(e){ let mem={}; return { getItem:k=>mem[k]??null, setItem:(k,v)=>{mem[k]=v}, removeItem:k=>{delete mem[k]} }; }
+})();
+
+const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: safeStorage,
+    storageKey: 'tdr-sb'
+  }
+});
+
+// 起動直後にセッションを読み出し（PWA/offlineでも即復元）
+await supabase.auth.getSession();
+
+// リダイレクト後の #access_token を片づけ（サインイン確定後）
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_IN' && location.hash.includes('access_token')) {
+    history.replaceState({}, '', location.pathname + location.search);
+  }
+});
+
+// タブ復帰時にセッションを再確認（iOSでの一時破棄対策）
+document.addEventListener('visibilitychange', async()=>{
+  if (!document.hidden) { await supabase.auth.getSession().catch(()=>{}); }
+});
 
 // ===== PWA install prompt =====
 let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt', (e)=>{e.preventDefault(); deferredPrompt=e;});
-document.getElementById('btnInstall').onclick=async()=>{ if(!deferredPrompt) return alert('インストール不可'); deferredPrompt.prompt(); deferredPrompt=null; };
+const btnInstall = document.getElementById('btnInstall');
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  btnInstall.disabled = false;
+});
+btnInstall.disabled = isIOS ? false : true;
+
+btnInstall.onclick = async()=>{
+  if (isIOS && !isStandalone) {
+    alert('iPhoneでは、Safariで「共有」→「ホーム画面に追加」でインストールできます。インストール後に通知も有効になります。');
+    return;
+  }
+  if (!deferredPrompt){
+    alert('インストールの条件がまだ満たされていません。しばらくして再度お試しください。');
+    return;
+  }
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+};
 
 // ===== ログインUI =====
 const userEmail=document.getElementById('userEmail');
@@ -764,12 +827,38 @@ supabase.channel('feed').on('postgres_changes',{event:'INSERT',schema:'public',t
 
 // ===== Push購読 =====
 const btnNotify=document.getElementById('btnNotify');
+
 async function urlB64ToUint8Array(b){const p='='.repeat((4-b.length%4)%4);const base=(b+p).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base);const u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u;}
-btnNotify.onclick=async()=>{ if(!ENV.VAPID_PUBLIC_KEY) return alert('VAPID_PUBLIC_KEY未設定');
-  const reg=await navigator.serviceWorker.register('/sw.js');
-  const sub=await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY) });
-  const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
-  const resp=await fetch('/.netlify/functions/push-subscribe',{ method:'POST', headers:{'Content-Type':'application/json','x-user-id':user.id}, body: JSON.stringify(sub.toJSON()) });
+
+btnNotify.onclick=async()=>{
+  if (!ENV.VAPID_PUBLIC_KEY) return alert('VAPID_PUBLIC_KEY未設定');
+
+  // iOS は PWA(ホーム画面)必須
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isIOS && !isStandalone) {
+    alert('iPhoneでは、まず「ホーム画面に追加」でインストールしてください（その後このボタンで通知を有効化できます）。');
+    return;
+  }
+
+  // 権限リクエスト（ユーザー操作内で）
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted'){ alert('通知が許可されませんでした'); return; }
+
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY)
+  });
+
+  const { data:{user} }=await supabase.auth.getUser();
+  if(!user) return alert('ログインしてください');
+
+  const resp=await fetch('/.netlify/functions/push-subscribe',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-user-id':user.id},
+    body: JSON.stringify(sub.toJSON())
+  });
   alert(resp.ok?'通知を登録しました':'通知登録に失敗しました');
 };
 
