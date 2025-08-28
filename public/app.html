@@ -35,17 +35,19 @@
   @media (max-width: 720px){
   .g2{ grid-template-columns: 1fr; }
   header .row{ gap:6px; flex-wrap:wrap; }
+  header{ position: static !important; top:auto !important; }
   .row{ gap:6px; }
   input,select,button{ font-size:16px; } /* iOS の勝手なズーム防止 */
   table{ display:block; overflow-x:auto; white-space:nowrap; font-size:14px; }
   th,td{ padding:6px 4px; }
   }
+  
 </style>
 </head>
 <body>
 <header><div class="wrap">
   <div class="row" style="justify-content:space-between">
-    <div><strong>🧭 TDR DPA & 待ち時間 通知</strong> <span class="mut">（Netlify + Supabase）</span></div>
+    <div><strong>🧭 TDR DPA & 待ち時間 通知</strong> <span class="mut"></span></div>
     <div class="row">
       <span id="userEmail" class="mut"></span>
       <button id="btnOpenLogin" class="cta">ログイン / 新規登録</button>
@@ -79,8 +81,9 @@
       <h3 style="margin-top:0">⏱ 最新待ち時間</h3>
       <div class="row">
         <button id="btnRefresh" class="cta">最新の待ち時間を表示</button>
+        <label class="pill"><input type="checkbox" id="autoRefresh" checked> 自動更新</label>
         <span id="qtUpdated" class="tag"></span>
-        <span class="mut">サーバは1分ごと保存</span>
+        <span class="mut">サーバは1〜2分ごと保存</span>
       </div>
       <div id="qt"></div>
       <div style="margin-top:10px">
@@ -223,6 +226,8 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
 const ENV = window.ENV || {};
+const ALIAS_DOMAIN = (ENV.ALIAS_EMAIL_DOMAIN || 'user.local').toLowerCase();
+const emailFromId = (id)=> `${id.toLowerCase()}@${ALIAS_DOMAIN}`;
 
 // localStorage が使えない(iOSプライベート/容量切れ)時のフォールバック
 const safeStorage = (()=> {
@@ -290,43 +295,44 @@ const loginModal = document.getElementById('loginModal');
 
 // メール方式の要素
 const loginEmail = document.getElementById('loginEmail');
-const emailRow = document.getElementById('emailRow');               // ← モーダルHTMLに追加したID
-const emailActionRow = document.getElementById('emailActionRow');   // ← モーダルHTMLに追加したID
+const emailRow = document.getElementById('emailRow');               // ← モーダルHTML側で用意
+const emailActionRow = document.getElementById('emailActionRow');   // ← モーダルHTML側で用意
 const btnSendLink = document.getElementById('btnSendLink');
 
-// 方式切替 / IDパス方式の要素
-const modeEmail = document.getElementById('modeEmail'); // ラジオ
-const modePw    = document.getElementById('modePw');    // ラジオ
+// 方式切替 / IDパス方式の要素（モーダルHTML側で用意）
+const modeEmail = document.getElementById('modeEmail');
+const modePw    = document.getElementById('modePw');
 const pwBox     = document.getElementById('pwBox');
 const loginId   = document.getElementById('loginId');
 const loginPw   = document.getElementById('loginPw');
 const btnSigninPw = document.getElementById('btnSigninPw');
 const btnSignupPw = document.getElementById('btnSignupPw');
 
+// 画面右上の「閉じる/ログアウト」
 document.getElementById('btnCloseLogin').onclick = () => loginModal.classList.remove('on');
 btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 
-// モード適用
+// 表示切替（メール or ID/PW）
 function applyLoginMode(){
   const usePw = modePw?.checked;
   if (pwBox) pwBox.style.display = usePw ? 'block' : 'none';
   if (emailRow) emailRow.style.display = usePw ? 'none' : 'flex';
   if (emailActionRow) emailActionRow.style.display = usePw ? 'none' : 'flex';
 }
-if (modeEmail && modePw){
+if (modeEmail && modePw) {
   modeEmail.onchange = modePw.onchange = applyLoginMode;
 }
 
-// モーダルを開く時点で既定は「メール方式」
+// モーダルを開く時は「ID/PW」既定（PWA内で完結させるため）
 btnOpenLogin.onclick = () => {
-  if (modeEmail) modeEmail.checked = true;
-  if (modePw) modePw.checked = false;
+  if (modePw) modePw.checked = true;
+  if (modeEmail) modeEmail.checked = false;
   applyLoginMode();
   loginModal.classList.add('on');
-  if (loginEmail) loginEmail.focus();
+  if (loginId) loginId.focus();
 };
 
-// --- メールリンク方式（既存のロジックを踏襲） ---
+// --- メールリンク方式（既存ロジック踏襲。PC向けに残す） ---
 btnSendLink.onclick = async () => {
   const email = (loginEmail?.value || '').trim();
   if (!email) return alert('メールを入力');
@@ -350,40 +356,80 @@ btnSendLink.onclick = async () => {
   loginModal.classList.remove('on');
 };
 
-// --- ID / パスワード方式（簡易版：ID=メールとして扱う） ---
-if (btnSigninPw) btnSigninPw.onclick = async () => {
-  const id = (loginId?.value || '').trim();
-  const pw = (loginPw?.value || '').trim();
-  if (!id || !pw) return alert('ID/パスワードを入力してください');
+// --- ID / パスワード方式（IDは自動でメールに変換して登録＆ログイン） ---
+btnSigninPw.onclick = async ()=>{
+  const id=(loginId?.value||'').trim();
+  const pw=(loginPw?.value||'').trim();
+  if(!id || !pw) return alert('ID/パスワードを入力してください');
 
-  // 簡易運用：ID=メールとして扱う（本格導入は username→email 解決のEdge Functionを別途用意）
-  if (!id.includes('@')) return alert('この簡易実装では ID=メール として扱います。メールでお試しください。');
+  const email = id.includes('@') ? id : emailFromId(id);
 
-  const { error } = await supabase.auth.signInWithPassword({ email: id, password: pw });
-  if (error) return alert(error.message);
+  // 1) まずサインインを試す
+  let { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+
+  // 2) 失敗したら「自動作成」→ プロフィール保存 → 再ログイン
+  if (error){
+    const s = await supabase.auth.signUp({ email, password: pw });
+    if (s.error && !/already|exists/i.test(s.error.message)) return alert(s.error.message);
+
+    try{
+      const { data:{ user } } = await supabase.auth.getUser();
+      if (user) await supabase.from('profiles').upsert({ id:user.id, username:id }).select().single();
+    }catch(_){}
+
+    const r2 = await supabase.auth.signInWithPassword({ email, password: pw });
+    if (r2.error) return alert(r2.error.message);
+  }
   loginModal.classList.remove('on');
 };
 
-if (btnSignupPw) btnSignupPw.onclick = async () => {
-  const id = (loginId?.value || '').trim();
-  const pw = (loginPw?.value || '').trim();
-  if (!id || !pw) return alert('ID/パスワードを入力してください');
+// （任意）サインアップ専用ボタンも自動作成に
+btnSignupPw.onclick = async ()=>{
+  const id=(loginId?.value||'').trim(), pw=(loginPw?.value||'').trim();
+  if(!id || !pw) return alert('ID/パスワードを入力してください');
 
-  if (!id.includes('@')) return alert('この簡易実装ではメールアドレスで登録してください（ユーザーIDは後から設定できます）');
+  const email = id.includes('@') ? id : emailFromId(id);
+  const s = await supabase.auth.signUp({ email, password: pw });
+  if (s.error && !/already|exists/i.test(s.error.message)) return alert(s.error.message);
 
-  const { error } = await supabase.auth.signUp({ email: id, password: pw });
-  if (error) return alert(error.message);
-  alert('登録しました。届いた確認メールをご確認ください。');
+  try{
+    const { data:{user} }=await supabase.auth.getUser();
+    if(user) await supabase.from('profiles').upsert({ id:user.id, username:id });
+  }catch(_){}
+
+  const r2 = await supabase.auth.signInWithPassword({ email, password: pw });
+  if (r2.error) return alert(r2.error.message);
   loginModal.classList.remove('on');
 };
 
 async function refreshAuthUI(){
   const { data:{ user } } = await supabase.auth.getUser();
-  if (user){ userEmail.textContent=user.email||'(ログイン中)'; btnOpenLogin.style.display='none'; btnLogout.style.display='inline-block'; }
-  else { userEmail.textContent=''; btnOpenLogin.style.display='inline-block'; btnLogout.style.display='none'; }
+  if (user){
+    // 表示ラベルは「@ユーザーID」優先、なければ email
+    let label = user.email || '(ログイン中)';
+    try{
+      const { data: prof } = await supabase
+        .from('profiles').select('username').eq('id', user.id).maybeSingle();
+      if (prof?.username) label = `@${prof.username}`;
+    }catch(_){}
+    userEmail.textContent = label;
+    btnOpenLogin.style.display = 'none';
+    btnLogout.style.display   = 'inline-block';
+  }else{
+    userEmail.textContent = '';
+    btnOpenLogin.style.display = 'inline-block';
+    btnLogout.style.display   = 'none';
+  }
 }
-await refreshAuthUI(); supabase.auth.onAuthStateChange(refreshAuthUI);
 
+// 初期反映 + 状態変化でUI更新（ハッシュ掃除もここで一緒に）
+await refreshAuthUI();
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_IN' && location.hash.includes('access_token')) {
+    history.replaceState({}, '', location.pathname + location.search);
+  }
+  refreshAuthUI();
+});
 // ===== 共通ヘルパ =====
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
@@ -1045,6 +1091,26 @@ parkSel.onchange = async () => {
   await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases();
   await loadParades(); renderEvents(); await renderNowTips();
 };
+let autoTimer=null;
+const autoRefresh = document.getElementById('autoRefresh');
+
+function startAuto(){
+  if (autoTimer) clearInterval(autoTimer);
+  autoTimer = setInterval(()=>loadQT(false), 60_000); // 60秒ごと
+}
+function stopAuto(){ if(autoTimer) clearInterval(autoTimer); autoTimer=null; }
+
+autoRefresh.onchange = ()=> autoRefresh.checked ? startAuto() : stopAuto();
+document.addEventListener('visibilitychange', ()=>{  // 画面が隠れたら一時停止
+  if (document.hidden) stopAuto();
+  else if (autoRefresh.checked) startAuto();
+});
+
+// 初期起動
+if (autoRefresh.checked) startAuto();
+
+// 手動更新ボタン
+document.getElementById('btnRefresh').onclick = async ()=>{ await loadQT(true); };
 
 // ===== 初期化 =====
 await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed();
