@@ -1,85 +1,95 @@
 // netlify/functions/sync-qt.js
-// Queue-Times を取得して Supabase に保存（スケジュール/手動実行）
-
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, QT_PARKS } = process.env;
 
-webpush.setVapidDetails('mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+const PUSH_ENABLED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails('mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
 
-const QT_PARKS = (process.env.QT_PARKS || '274,275')
-  .split(',').map(s=>parseInt(s.trim(),10)).filter(Boolean);
+const PARKS = (QT_PARKS || '274,275').split(',').map(s=>parseInt(s.trim(),10)).filter(Boolean);
 
 function errStr(e){
   if (!e) return 'unknown';
   if (typeof e === 'string') return e;
-  const o = { name:e.name, message:e.message, status:e.status, statusText:e.statusText };
-  return JSON.stringify(o).slice(0, 500);
+  const o = { name:e.name, message:e.message, stack:e.stack, status:e.status, statusText:e.statusText };
+  return JSON.stringify(o).slice(0, 900);
 }
 
+// fetch with timeout + 2回リトライ
+async function fetchWithTimeout(url, { timeout=20000, headers } = {}){
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), timeout);
+  try{
+    const r = await fetch(url, { headers, signal: ctl.signal });
+    const body = await r.text();
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} body=${body.slice(0,180)}`);
+    return JSON.parse(body);
+  } finally { clearTimeout(t); }
+}
 async function fetchQT(parkId){
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Netlify Function; QueueTimes)',
-    'Accept': 'application/json',
-    'Cache-Control': 'no-cache', 'Pragma': 'no-cache'
-  };
+  const headers = { 'User-Agent':'Mozilla/5.0 (Netlify Function; QueueTimes)', 'Accept':'application/json', 'Cache-Control':'no-cache', 'Pragma':'no-cache' };
   const urls = [
     `https://queue-times.com/parks/${parkId}/queue_times.json?nocache=${Date.now()}`,
     `https://queue-times.com/en-US/parks/${parkId}/queue_times.json?nocache=${Date.now()}`
   ];
   let lastErr;
-  for (const url of urls){
-    try{
-      const r = await fetch(url, { headers });
-      const body = await r.text();
-      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} body=${body.slice(0,180)}`);
-      return JSON.parse(body);
-    }catch(e){ lastErr=e; }
+  for (let attempt=0; attempt<3; attempt++){
+    for (const url of urls){
+      try { return await fetchWithTimeout(url, { headers, timeout: 20000 }); }
+      catch(e){ lastErr = e; }
+    }
+    await new Promise(r=>setTimeout(r, 800 * (attempt+1)));
   }
   throw lastErr;
 }
 
 async function sendPushToUsers(sb, userIds, title, body, meta = {}){
   if (!userIds?.length) return { sent:0 };
+  // DB通知は残す（失敗しても関数は落とさない）
   try {
-    await sb.from('notifications').insert(userIds.map(uid => ({
-      user_id: uid, kind: meta.kind||'info', title, body, meta
-    })));
-  } catch {}
-  const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', userIds);
-  let sent=0; const payload = JSON.stringify({ title, body, meta });
-  for (const s of subs||[]){
-    const sub = { endpoint:s.endpoint, keys:{ p256dh:s.p256dh, auth:s.auth } };
-    try{ await webpush.sendNotification(sub, payload); sent++; } catch(e){ /* 無効は無視 */ }
+    await sb.from('notifications').insert(userIds.map(uid => ({ user_id: uid, kind: meta.kind||'info', title, body, meta })));
+  } catch (e) {
+    console.error('notify insert error', errStr(e));
   }
+  if (!PUSH_ENABLED) return { sent:0 };
+
+  let sent=0;
+  try{
+    const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', userIds);
+    const payload = JSON.stringify({ title, body, meta });
+    for (const s of subs||[]){
+      const sub = { endpoint:s.endpoint, keys:{ p256dh:s.p256dh, auth:s.auth } };
+      try{ await webpush.sendNotification(sub, payload); sent++; }
+      catch(e){ console.error('webpush error', e?.message || e); }
+    }
+  }catch(e){ console.error('fetch subscriptions error', errStr(e)); }
   return { sent };
 }
 
 export const handler = async () => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth:{ persistSession:false } });
 
-  // ★開始ハートビート
+  // 開始心拍
   try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:true, note:'start' }); } catch {}
 
   const results = [];
   try {
-    // parks マスタ取得（qt_park_id で突合）
+    // parks 取得
     const { data: parks, error: parksErr } = await sb.from('parks').select('id, code, qt_park_id');
     if (parksErr) throw parksErr;
     const parksByQt = Object.fromEntries((parks||[]).map(p=>[p.qt_park_id, p]));
 
-    for (const qtParkId of QT_PARKS){
+    for (const qtParkId of PARKS){
       try{
         const park = parksByQt[qtParkId];
         if (!park) throw new Error(`parks not found for qt_park_id=${qtParkId}`);
 
         const data = await fetchQT(qtParkId);
 
-        // 直近の最新レコード（通知比較用）
+        // 最新スナップショット（通知比較用）
         const { data: prevRows } = await sb
           .from('queue_times')
           .select('attraction_name, is_open, wait_time, fetched_at')
@@ -127,7 +137,7 @@ export const handler = async () => {
         for (const cur of rows){
           const prev = latestByName.get(cur.attraction_name);
           const watchers = Array.from(usersByAttr.get(cur.attraction_name) || []);
-          if (!prev) continue;
+          if (!prev || !watchers.length) continue;
 
           const openChanged = prev.is_open !== cur.is_open;
           const waitPrev = (typeof prev.wait_time==='number') ? prev.wait_time : null;
@@ -135,7 +145,7 @@ export const handler = async () => {
           const waitDelta = (waitPrev!=null && waitCur!=null) ? (waitCur - waitPrev) : 0;
           const spike = Math.abs(waitDelta) >= 20;
 
-          if (openChanged && watchers.length){
+          if (openChanged){
             const title = cur.is_open ? `【運営再開】${cur.attraction_name}` : `【運営中止】${cur.attraction_name}`;
             const body  = cur.is_open ? `現在の待ち時間: ${waitCur ?? '-'}分` : '現在、運営が中止されています。';
             await sendPushToUsers(sb, watchers, title, body, {
@@ -143,7 +153,7 @@ export const handler = async () => {
               park_qt_id: qtParkId, name: cur.attraction_name, wait: waitCur
             });
             notified++;
-          }else if (spike && watchers.length){
+          } else if (spike){
             const title = `【待ち時間急変】${cur.attraction_name}`;
             const body  = `待ち時間が ${waitPrev ?? '-'}→${waitCur ?? '-'} 分（${waitDelta>0?'+':''}${waitDelta}分）`;
             await sendPushToUsers(sb, watchers, title, body, {
@@ -154,31 +164,22 @@ export const handler = async () => {
         }
 
         results.push({ parkId: qtParkId, ok:true, count: rows.length, notified });
+
       }catch(e){
-        // park単位の失敗は結果に残し、関数自体は継続
+        console.error('sync-qt park error', qtParkId, errStr(e));
         results.push({ parkId: qtParkId, ok:false, error: errStr(e) });
-        try {
-          await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note:`park ${qtParkId}: ${errStr(e)}` });
-        } catch {}
+        try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note:`park ${qtParkId}: ${errStr(e)}` }); } catch {}
       }
     }
 
-    // ★完了ハートビート（ここが“正しい位置”）
-    try {
-      await sb.from('function_heartbeats').insert({
-        name: 'sync-qt',
-        ok: true,
-        note: JSON.stringify(results).slice(0, 500)
-      });
-    } catch {}
+    // 完了心拍（成功）
+    try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:true, note: JSON.stringify(results).slice(0,900) }); } catch {}
 
     return { statusCode:200, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ results }) };
 
   } catch (e) {
-    // ★外側の致命的失敗（parks取得等）はここで記録
-    try {
-      await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note: errStr(e) });
-    } catch {}
+    console.error('sync-qt fatal', errStr(e));
+    try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note: errStr(e) }); } catch {}
     return { statusCode:500, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ok:false, error: errStr(e) }) };
   }
 };
