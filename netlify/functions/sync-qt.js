@@ -57,7 +57,7 @@ export const handler = async () => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth:{ persistSession:false } });
 
   // ★関数ハートビート（起動）
-  await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:true }).catch(()=>{});
+  try { await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:true }); } catch {}
 
   const { data: parks } = await sb.from('parks').select('id, code, qt_park_id');
   const parksByQt = Object.fromEntries((parks||[]).map(p=>[p.qt_park_id, p]));
@@ -147,7 +147,9 @@ export const handler = async () => {
       results.push({ parkId: qtParkId, ok:true, count: rows.length, notified });
     }catch(e){
       // ★失敗も心拍に記録
-      await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note: errStr(e) }).catch(()=>{});
+      try {
+        await sb.from('function_heartbeats').insert({ name:'sync-qt', ok:false, note: errStr(e) });
+      } catch {}
       results.push({ parkId: qtParkId, ok:false, error: errStr(e) });
     }
   }
