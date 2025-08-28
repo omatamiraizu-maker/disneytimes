@@ -29,6 +29,8 @@
   .w120{width:120px}
   .modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center}
   .modal.on{display:flex}
+  .tag.stale{ border-color:#7f1d1d; color:#fca5a5 }
+  .tag.fresh{ border-color:#1e3a8a; color:#93c5fd }
   .card{background:#0b1220;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:320px;max-width:420px}
   @media (max-width: 720px){
   .g2{ grid-template-columns: 1fr; }
@@ -75,7 +77,11 @@
   <section class="g g2">
     <div class="panel">
       <h3 style="margin-top:0">⏱ 最新待ち時間</h3>
-      <div class="row"><button id="btnRefresh" class="cta">最新の待ち時間を表示</button><span class="mut">サーバは1分ごと保存</span></div>
+      <div class="row">
+        <button id="btnRefresh" class="cta">最新の待ち時間を表示</button>
+        <span id="qtUpdated" class="tag"></span>
+        <span class="mut">サーバは1分ごと保存</span>
+      </div>
       <div id="qt"></div>
       <div style="margin-top:10px">
         <strong>🎯 いま行くなら（お気に入りから）</strong>
@@ -84,7 +90,10 @@
     </div>
     <div class="panel">
       <h3 style="margin-top:0">🎫 DPA / PP ステータス</h3>
-      <div class="row"><button id="btnFetchDpa" class="cta">最新を取得（背景で約15秒）</button></div>
+      <div class="row">
+        <button id="btnFetchDpa" class="cta">最新を取得（背景で約15秒）</button>
+        <span id="dpaUpdated" class="tag"></span>
+      </div>
       <div id="dpa"></div>
     </div>
   </section>
@@ -551,7 +560,23 @@ function areaOf(nameJa){
   const m = AREA_MAP[parkSel.value];
   return m?.get(normalizeTitle(nameJa)) || '?';
 }
-
+// === 最終更新の表示ヘルパー ===
+function fmtUpdated(ts){
+  if (!ts) return '';
+  const d = new Date(ts);
+  const pad = n=>String(n).padStart(2,'0');
+  const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const diffMin = Math.max(0, Math.round((Date.now() - d.getTime())/60000));
+  return `最終更新 ${hhmm}（${diffMin}分前）`;
+}
+function setUpdated(el, ts, staleMinutes){
+  if (!el) return;
+  if (!ts){ el.textContent=''; el.classList.remove('stale','fresh'); return; }
+  el.textContent = fmtUpdated(ts);
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(ts).getTime())/60000));
+  el.classList.toggle('stale', ageMin >= staleMinutes);
+  el.classList.toggle('fresh', ageMin < staleMinutes);
+}
 // ===== DPA購入：開始→終了+1h 自動入力 =====
 buyStart.addEventListener('change', ()=>{
   if(!buyStart.value) return;
@@ -588,6 +613,10 @@ async function loadQT(forceHeal=false){
 
   // 4) 表示へ
   state.qt = rows.map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
+  // ★ 最終更新 = 行の fetched_at の最大
+  const latestTs = rows.length ? rows.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.fetched_at)? mx : r.fetched_at), rows[0].fetched_at) : null;
+  setUpdated(document.getElementById('qtUpdated'), latestTs, 5); // 5分超で stale 扱い
+  
   renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList();
 }
 
@@ -698,6 +727,9 @@ async function loadDPA(){
     ])))
   ]);
   dpaDiv.innerHTML=''; dpaDiv.appendChild(tbl);
+  // ★ DPA の最終更新（各施設の最新行の最大時刻）
+  const latestDpaTs = latest.length ? latest.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.t)? mx : r.t), latest[0].t) : null;
+  setUpdated(document.getElementById('dpaUpdated'), latestDpaTs, 10); // 10分超で stale
 }
 
 // ===== お気に入り =====
