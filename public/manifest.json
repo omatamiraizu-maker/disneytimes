@@ -1,9 +1,13 @@
 {
   "name": "TDR DPA & 待ち時間 通知",
-  "short_name": "TDR助手",
+  "short_name": "TDR管理アプリ",
   "start_url": "/app.html",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#38bdf8",
-  "icons": []
+  "icons": [
+  { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+  { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+  { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
 }
