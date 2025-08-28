@@ -20,3 +20,8 @@
 [[scheduled.functions]]
   name = "notify-dpa-window"
   cron = "* * * * *"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
