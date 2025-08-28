@@ -561,12 +561,64 @@ buyStart.addEventListener('change', ()=>{
 });
 
 // ===== 待ち時間（日本語ビュー） =====
-async function loadQT(){
-  const parkId=parseInt(parkSel.value,10);
-  const { data, error } = await supabase.from('v_queue_times_latest').select('name_ja,name_raw,is_open,wait_time,fetched_at').eq('park_id',parkId).limit(600);
+async function loadQT(forceHeal=false){
+  const parkId = parseInt(parkSel.value,10);
+
+  // 1) Supabase から読む
+  const { data, error } = await supabase
+    .from('v_queue_times_latest')
+    .select('name_ja,name_raw,is_open,wait_time,fetched_at')
+    .eq('park_id',parkId)
+    .limit(600);
+
   if (error){ qtDiv.textContent=error.message; return; }
-  state.qt = (data||[]).map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
+
+  // 2) データが空 / ほぼ全件 0分&休止 = 取り込み死を疑う
+  const rows = data||[];
+  const stale = !rows.length || rows.filter(r => (r.wait_time??0)===0 && !r.is_open).length >= Math.max(5, Math.floor(rows.length*0.8));
+
+  // 3) stale のときは一度だけ自己修復（Netlify関数を叩く）
+  if (stale && !forceHeal){
+    qtDiv.innerHTML = '<div class="mut">最新データがありません。サーバと同期しています…（数秒お待ちください）</div>';
+    await triggerQtSync(parkId);        // ← 下に定義
+    // 少し待って再読込
+    await new Promise(r=>setTimeout(r, 4000));
+    return loadQT(true);
+  }
+
+  // 4) 表示へ
+  state.qt = rows.map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
   renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList();
+}
+
+// Netlify関数を叩いて「取り込み」を強制（存在する方を順に試す）
+async function triggerQtSync(parkId){
+  // (A) 本命: サーバ側で Supabase に書き込む関数（あなたの環境に合わせて用意済み想定）
+  //   - 例: /.netlify/functions/sync-qt  （両パークまとめて or ?parkId=）
+  try{
+    const u = `/.netlify/functions/sync-qt?parkId=${parkId}`;
+    const r = await fetch(u, { method:'POST' });
+    if (r.ok) return;
+  }catch(_){}
+
+  // (B) フォールバック: queue-times 直読 → 表示だけでも更新（保存はしない）
+  try{
+    const r = await fetch(`/.netlify/functions/queue-times?parkId=${parkId}`);
+    if (!r.ok) return;
+    const j = await r.json();
+    // queue-times フォーマット → 画面用に変換
+    const list = (j.lands||[]).flatMap(l=>l.rides||[]);
+    if (list.length){
+      state.qt = list.map(x=>({
+        nameJa: x.name_jp || x.name,       // もし自前で日本語名を付けている場合
+        nameRaw: x.name,
+        open: x.is_open ?? (x.is_open === undefined ? x.status!=='Closed' : x.is_open),
+        wait: typeof x.wait_time==='number' ? x.wait_time : (x.wait_time_minutes ?? null),
+        time: new Date().toISOString()
+      }));
+      renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList();
+    }
+  }catch(_){}
 }
 function applyFilters(list){
   let out=list.slice(0);
@@ -953,7 +1005,7 @@ btnNotify.onclick=async()=>{
 };
 
 // ===== ボタン配線 =====
-document.getElementById('btnRefresh').onclick=()=>{ loadQT(); renderNowTips(); };
+document.getElementById('btnRefresh').onclick=()=>{ loadQT(true); renderNowTips(); };
 document.getElementById('btnFetchDpa').onclick=async()=>{ await fetch('/.netlify/functions/ingest-tdr-dpa-background',{method:'POST'}).catch(()=>{}); await new Promise(r=>setTimeout(r,15000)); await loadDPA(); };
 parkSel.onchange = async () => {
   await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases();
