@@ -644,25 +644,27 @@ async function loadQT(forceHeal=false){
 
   if (error){ qtDiv.textContent=error.message; return; }
 
-  // 2) データが空 / ほぼ全件 0分&休止 = 取り込み死を疑う
+  // 2) データが空 / ほぼ全件0&休止 / 直近更新が古い なら取り込み死を疑う
   const rows = data||[];
-  const stale = !rows.length || rows.filter(r => (r.wait_time??0)===0 && !r.is_open).length >= Math.max(5, Math.floor(rows.length*0.8));
+
+  // 最新時刻
+  const latestTs = rows.length ? rows.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.fetched_at)? mx : r.fetched_at), rows[0].fetched_at) : null;
+  const ageMin = latestTs ? Math.max(0, Math.round((Date.now() - new Date(latestTs).getTime())/60000)) : Infinity;
+
+  const mostlyClosed = rows.filter(r => (r.wait_time??0)===0 && !r.is_open).length >= Math.max(5, Math.floor(rows.length*0.8));
+  const stale = (!rows.length) || mostlyClosed || (ageMin >= 5);  // ★ 5分超で stale
 
   // 3) stale のときは一度だけ自己修復（Netlify関数を叩く）
   if (stale && !forceHeal){
-    qtDiv.innerHTML = '<div class="mut">最新データがありません。サーバと同期しています…（数秒お待ちください）</div>';
-    await triggerQtSync(parkId);        // ← 下に定義
-    // 少し待って再読込
+    qtDiv.innerHTML = '<div class="mut">最新データが古い/ありません。サーバと同期しています…</div>';
+    await triggerQtSync(parseInt(parkSel.value,10));
     await new Promise(r=>setTimeout(r, 4000));
     return loadQT(true);
   }
 
   // 4) 表示へ
   state.qt = rows.map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
-  // ★ 最終更新 = 行の fetched_at の最大
-  const latestTs = rows.length ? rows.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.fetched_at)? mx : r.fetched_at), rows[0].fetched_at) : null;
-  setUpdated(document.getElementById('qtUpdated'), latestTs, 5); // 5分超で stale 扱い
-  
+  setUpdated(document.getElementById('qtUpdated'), latestTs, 5);
   renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList();
 }
 
