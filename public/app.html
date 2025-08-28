@@ -223,6 +223,22 @@
 
 <script src="/.netlify/functions/env"></script>
 <script type="module">
+// PWA: Service Worker を起動時に登録
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+// 起動直後：新 SW が待機していたら即適用→リロード
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (!reg || !reg.waiting) return;
+    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    reg.waiting.addEventListener('statechange', e => {
+      if (e.target.state === 'activated') location.reload();
+    });
+  });
+}
+
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
 const ENV = window.ENV || {};
@@ -430,6 +446,22 @@ supabase.auth.onAuthStateChange((event) => {
   }
   refreshAuthUI();
 });
+
+// Parkごとの「DB最新」を直に見る（一覧が空/フィルタでも確実）
+async function refreshParkLastLabel() {
+  const parkId = parseInt(parkSel.value, 10);
+  const { data, error } = await supabase
+    .from('queue_times')
+    .select('fetched_at')
+    .eq('park_id', parkId)
+    .order('fetched_at', { ascending: false })
+    .limit(1);
+
+  if (!error && data?.length) {
+    setUpdated(document.getElementById('qtUpdated'), data[0].fetched_at, 5);
+  }
+}
+
 // ===== 共通ヘルパ =====
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
@@ -639,33 +671,32 @@ async function loadQT(forceHeal=false){
   const { data, error } = await supabase
     .from('v_queue_times_latest')
     .select('name_ja,name_raw,is_open,wait_time,fetched_at')
-    .eq('park_id',parkId)
+    .eq('park_id', parkId)
     .limit(600);
 
-  if (error){ qtDiv.textContent=error.message; return; }
+  if (error){ qtDiv.textContent = error.message; return; }
 
-  // 2) データが空 / ほぼ全件0&休止 / 直近更新が古い なら取り込み死を疑う
-  const rows = data||[];
-
-  // 最新時刻
+  // 2) ステール判定
+  const rows = data || [];
   const latestTs = rows.length ? rows.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.fetched_at)? mx : r.fetched_at), rows[0].fetched_at) : null;
   const ageMin = latestTs ? Math.max(0, Math.round((Date.now() - new Date(latestTs).getTime())/60000)) : Infinity;
-
   const mostlyClosed = rows.filter(r => (r.wait_time??0)===0 && !r.is_open).length >= Math.max(5, Math.floor(rows.length*0.8));
-  const stale = (!rows.length) || mostlyClosed || (ageMin >= 5);  // ★ 5分超で stale
+  const stale = (!rows.length) || mostlyClosed || (ageMin >= 5);
 
-  // 3) stale のときは一度だけ自己修復（Netlify関数を叩く）
+  // 3) stale のときは一度だけ自己修復
   if (stale && !forceHeal){
     qtDiv.innerHTML = '<div class="mut">最新データが古い/ありません。サーバと同期しています…</div>';
-    await triggerQtSync(parseInt(parkSel.value,10));
+    await triggerQtSync(parkId);
     await new Promise(r=>setTimeout(r, 4000));
-    return loadQT(true);
+    return await loadQT(true);
   }
 
   // 4) 表示へ
   state.qt = rows.map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
   setUpdated(document.getElementById('qtUpdated'), latestTs, 5);
   renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList();
+
+  await refreshParkLastLabel();
 }
 
 // Netlify関数を叩いて「取り込み」を強制（存在する方を順に試す）
@@ -1093,17 +1124,17 @@ parkSel.onchange = async () => {
   await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases();
   await loadParades(); renderEvents(); await renderNowTips();
 };
-let autoTimer=null;
+let autoTimer = null;
 const autoRefresh = document.getElementById('autoRefresh');
 
 function startAuto(){
   if (autoTimer) clearInterval(autoTimer);
-  autoTimer = setInterval(()=>loadQT(false), 60_000); // 60秒ごと
+  autoTimer = setInterval(()=>loadQT(false), 60_000); // 60秒ごと（中でラベルも更新）
 }
 function stopAuto(){ if(autoTimer) clearInterval(autoTimer); autoTimer=null; }
 
 autoRefresh.onchange = ()=> autoRefresh.checked ? startAuto() : stopAuto();
-document.addEventListener('visibilitychange', ()=>{  // 画面が隠れたら一時停止
+document.addEventListener('visibilitychange', ()=>{
   if (document.hidden) stopAuto();
   else if (autoRefresh.checked) startAuto();
 });
