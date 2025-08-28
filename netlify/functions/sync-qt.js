@@ -2,6 +2,8 @@
 // Queue-Times を取得して Supabase に保存（毎分実行）
 // 追加: 直近スナップショットと比較して、運営中止/再開/待ち時間急変を自動通知（お気に入り登録者向け）
 // 注意: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY をNetlifyの環境変数に設定しておくこと
+// 取り込み開始時に心拍を打つ
+await supabase.from('function_heartbeats').insert({ name: 'sync-qt' });
 
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
