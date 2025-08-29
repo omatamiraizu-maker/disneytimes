@@ -6,11 +6,15 @@ const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
   try {
-    const userId = event.headers['x-user-id'];
-    if (!userId) return { statusCode: 401, body: 'missing user' };
+    const token = (event.headers.authorization || '').replace(/^Bearer\s+/i,'');
+    if (!token) return { statusCode: 401, body: 'missing token' };
     const body = JSON.parse(event.body || '{}');
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth: { persistSession: false } });
-
+    // Supabase 管理APIでトークンを検証し user.id を取得
+    const { data: u, error: uerr } = await sb.auth.getUser(token);
+    if (uerr || !u?.user?.id) return { statusCode: 401, body: 'invalid token' };
+    const userId = u.user.id;
+    
     const row = {
       user_id: userId,
       endpoint: body.endpoint,
