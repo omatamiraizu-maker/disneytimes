@@ -129,11 +129,24 @@ export const handler = async () => {
       }));
 
       // 変化検知（お気に入り登録ユーザー）
+      // favorites.raw(英名) → v_queue_times_latest で 日本語名へブリッジ
       const { data: favs } = await sb
         .from('user_favorites')
         .select('user_id, park_id, attraction_name')
         .eq('park_id', park.qt_park_id); // ★favoritesはpark_idにqt_park_id（274/275）を使う前提
+      const { data: aliases } = await sb
+        .from('v_queue_times_latest')
+        .select('name_raw,name_ja')
+        .eq('park_id', park.qt_park_id);
+      const jaByRaw = new Map((aliases||[]).map(a => [a.name_raw, a.name_ja]));
 
+      const usersByJa = new Map(); // 日本語名 → Set<user_id>
+      for (const f of favs || []) {
+        const ja = jaByRaw.get(f.attraction_name) || f.attraction_name; // 変換失敗時は原文で
+        if (!usersByJa.has(ja)) usersByJa.set(ja, new Set());
+        usersByJa.get(ja).add(f.user_id);
+      }
+      
       const usersByName = new Map();
       for (const f of favs || []) {
         if (!usersByName.has(f.attraction_name)) usersByName.set(f.attraction_name, new Set());
@@ -144,7 +157,7 @@ export const handler = async () => {
       for (const snap of snaps) {
         const prev = latestById.get(snap.attraction_id);
         const name = rows.find((r) => idByName[r.name] === snap.attraction_id)?.name || 'アトラクション';
-        const watchers = Array.from(usersByName.get(name) || []);
+        const watchers = Array.from(usersByJa.get(name) || []);
         if (!prev || !watchers.length) continue;
 
         // DPA変化
