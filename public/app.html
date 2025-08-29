@@ -711,7 +711,7 @@ async function triggerQtSync(parkId){
 
   // (B) フォールバック: queue-times 直読 → 表示だけでも更新（保存はしない）
   try{
-    const r = await fetch(`/.netlify/functions/queue-times?parkId=${parkId}`);
+    const r = await fetch(`/.netlify/functions/qt-proxy?parkId=${parkId}`);
     if (!r.ok) return;
     const j = await r.json();
     // queue-times フォーマット → 画面用に変換
@@ -1107,9 +1107,13 @@ btnNotify.onclick=async()=>{
   const { data:{user} }=await supabase.auth.getUser();
   if(!user) return alert('ログインしてください');
 
+  const { data:{ session } } = await supabase.auth.getSession();
   const resp=await fetch('/.netlify/functions/push-subscribe',{
     method:'POST',
-    headers:{'Content-Type':'application/json','x-user-id':user.id},
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization': session?.access_token ? `Bearer ${session.access_token}` : ''
+    },
     body: JSON.stringify(sub.toJSON())
   });
   alert(resp.ok?'通知を登録しました':'通知登録に失敗しました');
