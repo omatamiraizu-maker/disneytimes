@@ -21,16 +21,18 @@ export const handler = async (event) => {
       .gte('fetched_at', since);
     if (error) throw error;
 
-    const now = new Date();
-    const dow = now.getDay(); // 0=Sun
-    const tgt = now.getHours() * 60 + now.getMinutes();
-
+    const nowUtc = new Date();
+    const jstNow = new Date(nowUtc.getTime() + 9*60*60*1000);
+    const dow = jstNow.getUTCDay(); // JST の曜日
+    const tgt = jstNow.getUTCHours() * 60 + jstNow.getUTCMinutes();
+    
     const vals = [];
     for (const r of data || []) {
       if (typeof r.wait_time !== 'number') continue;
-      const d = new Date(r.fetched_at);
-      if (d.getDay() !== dow) continue;
-      const mins = d.getHours() * 60 + d.getMinutes();
+      const dUtc = new Date(r.fetched_at);
+      const dJst = new Date(dUtc.getTime() + 9*60*60*1000);
+      if (dJst.getUTCDay() !== dow) continue;
+      const mins = dJst.getUTCHours() * 60 + dJst.getUTCMinutes();
       if (Math.abs(mins - tgt) <= 30) vals.push(r.wait_time);
     }
     vals.sort((a,b)=>a-b);
