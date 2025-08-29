@@ -49,7 +49,7 @@ export const handler = async () => {
   for (const p of rows || []) {
     const minutesBefore = getWindow(p.user_id, p.park_id);
     const diffMin = Math.round((new Date(p.slot_start).getTime() - Date.now()) / 60000);
-    if (diffMin === minutesBefore) {
+    if (Math.abs(diffMin - minutesBefore) <= 1) {
       const title = `【もうすぐDPA】${p.attraction_name}`;
       const body = `${minutesBefore}分後に利用開始（${new Date(p.slot_start).toLocaleTimeString()}〜${new Date(p.slot_end).toLocaleTimeString()}）`;
       await sendPush(sb, [p.user_id], title, body, { kind: 'dpa-window', name: p.attraction_name, park_id: p.park_id, purchase_id: p.id });
