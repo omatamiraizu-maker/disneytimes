@@ -140,9 +140,10 @@ export const handler = async () => {
           if (!prev || !watchers.length) continue;
         
           // ===== 営業時間チェック（8:30-21:00）=====
-          const now = new Date();
-          const hour = now.getHours();
-          const minute = now.getMinutes();
+          const nowUtc = new Date();
+          const jst = new Date(nowUtc.getTime() + 9*60*60*1000);
+          const hour = jst.getUTCHours();
+          const minute = jst.getUTCMinutes();
           const currentTime = hour * 60 + minute; // 分単位に変換
           
           // 8:30（510分）より前、または21:00（1260分）以降は通知をスキップ
