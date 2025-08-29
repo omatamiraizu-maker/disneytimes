@@ -18,12 +18,19 @@ const PAGES = [
   { code: 'TDS', url: 'https://www.tokyodisneyresort.jp/tds/attraction.html' },
 ];
 
+function norm(s=''){
+  return s.replace(/[\u200B-\u200D\uFEFF]/g,'')
+          .replace(/[\s\t\r\n]+/g,' ')
+          .replace(/　/g,' ')
+          .replace(/[･]/g,'・')
+          .trim();
+}
 function classify(labels) {
-  const t = labels.join(' ');
+  const t = norm(labels.join(' '));
   let dpa = '記載なし', pp = '記載なし';
   if (t.includes('ディズニー・プレミアアクセス')) {
     if (t.includes('販売中')) dpa = '販売中';
-    else if (t.includes('販売なし') || t.includes('販売を行わない')) dpa = '販売なし';
+    else if (t.includes('販売なし') || t.includes('販売を行わない') || t.includes('販売はありません')) dpa = '販売なし';
     else dpa = '要確認（記載あり）';
   }
   if (t.includes('40周年記念プライオリティパス')) {
@@ -33,7 +40,15 @@ function classify(labels) {
   }
   return { dpa, pp };
 }
-
+function idFromHref(h=''){ const m=h.match(/\/(\d+)\/?$/); return m?m[1]:null; }
+function visibleDateDiv($, id){
+  let hit=null;
+  $(`div[class*="str_id-${id}"]`).each((_,el)=>{
+    const style=(($(el).attr('style')||'')+'').toLowerCase();
+    if (!style.includes('display') || !style.includes('none')) { hit=$(el); return false; }
+});
+return hit;
+}
 async function fetchHTML(url, ms = 20000) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), ms);
@@ -77,20 +92,24 @@ export const handler = async () => {
       const html = await fetchHTML(p.url, 20000);
       const $ = cheerio.load(html);
       const anchors = $('a[href*="/attraction/detail/"]').toArray();
-
-      // 解析
       const rows = anchors.map((a) => {
         const el = $(a);
-        const name =
-          el.find('.name, .ttl, .title, .headline').text().trim() ||
-          el.attr('title') ||
-          (el.text() || '').trim();
+        const name = (el.find('.name, .ttl, .title, .headline').text().trim() || el.attr('title') || (el.text()||'').trim());
         const url = new URL(el.attr('href'), p.url).toString();
         const labels = [];
         const holder = el.closest('li, .postItem, .listItem, .col, .box');
-        holder.find('.operation, .operation .warning, .label, .tag, .notes, .notice, .status').each((_, n) => {
-          labels.push($(n).text().replace(/\s+/g, ' ').trim());
+        holder.find('span.operation.warning, span.operation, .iconTag, .label, .tag, .notes, .notice, .status').each((_, n) => {
+          labels.push(norm($(n).text()));
         });
+        const id = idFromHref(el.attr('href')||'');
+        if (id) {
+          const $date = visibleDateDiv($, id);
+          if ($date && $date.length) {
+            $date.find('span.operation.warning, span.operation, .iconTag, .label, .tag, .notes, .notice, .status').each((_, n) => {
+              labels.push(norm($(n).text()));
+            });
+          }
+        }
         const { dpa, pp } = classify(labels);
         return { name, url, dpa, pp };
       });
