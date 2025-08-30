@@ -1196,13 +1196,29 @@ parkSel.onchange = async () => {
   await loadPresets();
 };
 let autoTimer = null;
+let dpaTimer  = null;
+
 const autoRefresh = document.getElementById('autoRefresh');
 
 function startAuto(){
-  if (autoTimer) clearInterval(autoTimer);
-  autoTimer = setInterval(()=>loadQT(false), 60_000); // 60秒ごと（中でラベルも更新）
+  // まず既存を綺麗に止める
+  stopAuto();
+
+  // 60秒ごとに待ち時間
+  autoTimer = setInterval(() => loadQT(false).catch(()=>{}), 60_000);
+
+  // 3分ごとに DPA / PP
+  dpaTimer  = setInterval(() => loadDPA().catch(()=>{}), 180_000);
+
+  // 起動直後に一回分走らせておくと体感が良い（任意）
+  loadQT(false).catch(()=>{});
+  loadDPA().catch(()=>{});
 }
-function stopAuto(){ if(autoTimer) clearInterval(autoTimer); autoTimer=null; }
+
+function stopAuto(){
+  if (autoTimer){ clearInterval(autoTimer); autoTimer = null; }
+  if (dpaTimer){  clearInterval(dpaTimer);  dpaTimer  = null; }
+}
 
 autoRefresh.onchange = ()=> autoRefresh.checked ? startAuto() : stopAuto();
 document.addEventListener('visibilitychange', ()=>{
