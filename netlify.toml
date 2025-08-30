@@ -6,23 +6,9 @@
 [functions]
   node_bundler = "esbuild"
 
-# 偶数分：Queue-Times 同期（2分おき）
-[[scheduled.functions]]
-  name = "sync-qt"
-  cron = "*/2 * * * *"
-
-# 奇数分：DPA/PP スクレイプ（2分おき・バックグラウンド）
-[[scheduled.functions]]
-  name = "ingest-tdr-dpa-background"
-  cron = "1-59/2 * * * *"
-
-# 毎分：通知ウィンドウチェック（軽め）
-[[scheduled.functions]]
-  name = "notify-dpa-window"
-  cron = "* * * * *"
-
 [[headers]]
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
+
 
