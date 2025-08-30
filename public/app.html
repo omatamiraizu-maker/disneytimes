@@ -445,6 +445,7 @@ supabase.auth.onAuthStateChange((event) => {
     history.replaceState({}, '', location.pathname + location.search);
   }
   refreshAuthUI();
+  loadPresets();
 });
 
 // Parkごとの「DB最新」を直に見る（一覧が空/フィルタでも確実）
@@ -813,8 +814,15 @@ async function loadDPA(){
 
 // ===== お気に入り =====
 async function toggleFav(raw){ const parkId=parseInt(parkSel.value,10); const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
-  if(state.favorites.has(raw)){ await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId, attraction_name:raw }); state.favorites.delete(raw); }
-  else{ await supabase.from('user_favorites').upsert({ user_id:user.id, park_id:parkId, attraction_name:raw }); state.favorites.add(raw); }
+  if(state.favorites.has(raw)){
+    const { error } = await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId, attraction_name:raw });
+    if (error) return alert('保存に失敗しました: '+error.message);
+    state.favorites.delete(raw);
+  } else {
+    const { error } = await supabase.from('user_favorites').upsert({ user_id:user.id, park_id:parkId, attraction_name:raw });
+    if (error) return alert('保存に失敗しました: '+error.message);
+    state.favorites.add(raw);
+  }
   renderFavs(); renderQT(); renderCountsEditor(); renderNowTips();
 }
 async function loadFavs(){ const parkId=parseInt(parkSel.value,10); const { data:{user} }=await supabase.auth.getUser(); state.favorites.clear();
@@ -825,6 +833,64 @@ function renderFavs(){
   const names = state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa);
   document.getElementById('favs').textContent = names.length ? 'お気に入り：'+names.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
 }
+// ▼ 追加：プリセット保存
+document.getElementById('btnSavePreset').onclick = async () => {
+  const { data:{ user } } = await supabase.auth.getUser();
+  if (!user) return alert('ログインしてください');
+  const name = (presetName.value || '').trim();
+  if (!name) return alert('プリセット名を入力');
+
+  const items = Array.from(state.favorites.values()); // 英名の配列
+  const row = { user_id: user.id, park_id: parseInt(parkSel.value,10), name, items };
+  const { error } = await supabase.from('user_fav_presets').insert(row);
+  if (error) return alert('保存に失敗: ' + error.message);
+  alert('保存しました'); presetName.value='';
+  await loadPresets();
+};
+
+// ▼ 追加：プリセット一覧を読み込む
+async function loadPresets(){
+  const { data:{ user } } = await supabase.auth.getUser();
+  const sel = document.getElementById('presetSelect');
+  sel.innerHTML = '';
+  if (!user) return; // 未ログイン
+  const { data } = await supabase
+    .from('user_fav_presets')
+    .select('id,name,created_at')
+    .eq('user_id', user.id)
+    .eq('park_id', parseInt(parkSel.value,10))
+    .order('created_at', { ascending:false });
+  for (const p of (data||[])) {
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = `${p.name}`;
+    sel.appendChild(opt);
+  }
+}
+
+// ▼ 追加：プリセット読込（DBと画面に反映）
+document.getElementById('btnLoadPreset').onclick = async () => {
+  const { data:{ user } } = await supabase.auth.getUser();
+  if (!user) return alert('ログインしてください');
+  const sel = document.getElementById('presetSelect');
+  const id = Number(sel.value || 0);
+  if (!id) return alert('プリセットを選択');
+
+  const { data: p, error } = await supabase.from('user_fav_presets').select('*').eq('id', id).single();
+  if (error || !p) return alert('読み込みに失敗しました');
+
+  const parkId = parseInt(parkSel.value,10);
+  // DBの現在の★を全削除 → プリセットの内容をUpsert
+  await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId });
+  const rows = (p.items||[]).map(nameRaw => ({ user_id:user.id, park_id:parkId, attraction_name:nameRaw }));
+  if (rows.length) await supabase.from('user_favorites').insert(rows);
+
+  // 画面状態も反映
+  state.favorites = new Set(p.items||[]);
+  renderFavs(); renderQT(); renderCountsEditor(); renderNowTips();
+  alert('プリセットを適用しました');
+};
+
+
 
 // ===== 通知ルール =====
 async function loadRules(){
@@ -1127,6 +1193,7 @@ document.getElementById('btnFetchDpa').onclick=async()=>{ await fetch('/.netlify
 parkSel.onchange = async () => {
   await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases();
   await loadParades(); renderEvents(); await renderNowTips();
+  await loadPresets();
 };
 let autoTimer = null;
 const autoRefresh = document.getElementById('autoRefresh');
@@ -1151,6 +1218,7 @@ document.getElementById('btnRefresh').onclick = async ()=>{ await loadQT(true); 
 
 // ===== 初期化 =====
 await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed();
+await loadPresets();
 </script>
 </body>
 </html>
