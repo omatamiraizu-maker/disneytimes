@@ -39,6 +39,19 @@
     table{ display:block; overflow-x:auto; white-space:nowrap; font-size:14px; }
     th,td{ padding:6px 4px; }
   }
+  /* モバイルはカードUIを優先して使う（テーブルは隠す） */
+  @media (max-width: 480px) {
+    #qt table { display: none; }
+    .qt-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .qt-card {
+      background:#0b1220; border:1px solid var(--line); border-radius:12px; padding:12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .qt-card .title { font-weight:600; }
+    .qt-card .meta { font-size:12px; color:var(--mute); }
+    .qt-card .wait { font: 700 18px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
+    .qt-card .star { font-size:20px; cursor:pointer; }
+  }
   .tag.stale{ border-color:#7f1d1d; color:#fca5a5 }
   .tag.fresh{ border-color:#1e3a8a; color:#93c5fd }
 </style>
@@ -68,6 +81,8 @@
       <span class="pill">フィルタ：</span>
       <label class="pill"><input type="checkbox" id="fDpaOnly"> DPA対象のみ</label>
       <label class="pill"><input type="checkbox" id="fKids"> こども向け</label>
+      <!-- 既存のフィルタ行に追加 -->
+      <label class="pill"><input type="checkbox" id="fFavOnly"> ★ お気に入りのみ</label>
       <label class="pill">待ち時間 ≤ <input type="number" id="fMaxWait" value="999" class="w120"> 分</label>
       <label class="pill">並び順：
         <select id="sortBy"><option value="name">名前</option><option value="wait">待ち時間（短い順）</option><option value="open">運営中を先に</option></select>
@@ -476,7 +491,22 @@ function renderQT(){
       return tr;
     }))
   ]);
-  qtDiv.innerHTML=''; qtDiv.appendChild(tbl);
+  const cards = el('div',{class:'qt-cards'},
+    rows.map(r=>{
+      const fav = state.favorites.has(r.nameRaw);
+      return el('div',{class:'qt-card'},[
+        el('div',{},[
+          el('div',{class:'title'}, r.nameJa),
+          el('div',{class:'meta'}, r.open ? '運営中' : '休止')
+        ]),
+        el('div',{class:'wait'}, (r.wait ?? '-') + '分'),
+        el('div',{class:'star', onclick:()=>toggleFav(r.nameRaw)}, fav?'★':'☆')
+      ]);
+    })
+  );
+    qtDiv.innerHTML='';
+  qtDiv.appendChild(tbl);
+  qtDiv.appendChild(cards); // 幅に応じて CSS が自動で出し分け
 }
 function fillDpaNameList(){
   const dl=document.getElementById('dpaNames'); dl.innerHTML='';
