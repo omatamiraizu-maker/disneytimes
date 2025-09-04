@@ -1,61 +1,39 @@
+// netlify/functions/notify-dpa-window-background.mjs
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
+webpush.setVapidDetails('mailto:notify@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-webpush.setVapidDetails('mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+export async function handler(){
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth:{ persistSession:false }});
+  try{
+    // 直近 3 分で DPA/PP に変化があったアトラクションを拾う（簡易）
+    const { data:changes } = await sb.rpc('sp_recent_status_changes', { minutes: 3 }); // 既存RPCがなければ SQL 直書きでもOK
 
-async function sendPush(sb, userIds, title, body, meta) {
-  if (!userIds?.length) return 0;
-  await sb.from('notifications').insert(userIds.map(uid => ({ user_id: uid, kind: meta.kind || 'info', title, body, meta })));
-  const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', userIds);
-  const payload = JSON.stringify({ title, body, meta });
-  let sent = 0;
-  for (const s of subs || []) {
-    try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
-      sent++;
-    } catch (e) { /* 無効購読は握りつぶす */ }
-  }
-  return sent;
-}
+    if (!changes?.length) return { statusCode:202, body:'no changes' };
 
-export const handler = async () => {
-  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth: { persistSession: false } });
+    // 通知対象ユーザーを引いて送る（簡易：全員 + park_id マッチ）
+    for (const ch of changes){
+      const { data:subs } = await sb.from('push_subscriptions').select('id,user_id,endpoint,p256dh,auth').eq('park_id', ch.park_id);
+      if (!subs?.length) continue;
 
-  // ルール取得（ユーザーごとに window_minutes）
-  const { data: rules } = await sb.from('user_alert_rules').select('user_id, park_id, window_minutes');
-  const winByUserPark = new Map();
-  for (const r of rules || []) {
-    const k = `${r.user_id}:${r.park_id || -1}`;
-    winByUserPark.set(k, r.window_minutes);
-  }
-  // デフォルト10分
-  const getWindow = (uid, park) => winByUserPark.get(`${uid}:${park}`) ?? winByUserPark.get(`${uid}:-1`) ?? 10;
+      const title = `${ch.name} の販売状況が更新`;
+      const body  = `DPA:${ch.dpa_status||'-'} / PP:${ch.pp40_status||'-'}`;
 
-  // 直近30分のウィンドウ開始を対象（未通知のみ）
-  const { data: rows, error } = await sb
-    .from('dpa_purchases')
-    .select('*')
-    .eq('notified', false)
-    .gte('slot_start', new Date(Date.now() - 30 * 60_000).toISOString())
-    .lte('slot_start', new Date(Date.now() + 60 * 60_000).toISOString());
-  if (error) return { statusCode: 500, body: JSON.stringify({ ok: false, error: String(error) }) };
+      // DB の notifications にも記録（フロントのフィードで見えるように）
+      await sb.from('notifications').insert({ title, body });
 
-  let touched = 0;
-  for (const p of rows || []) {
-    const minutesBefore = getWindow(p.user_id, p.park_id);
-    const diffMin = Math.round((new Date(p.slot_start).getTime() - Date.now()) / 60000);
-    if (Math.abs(diffMin - minutesBefore) <= 1) {
-      const title = `【もうすぐDPA】${p.attraction_name}`;
-      const body = `${minutesBefore}分後に利用開始（${new Date(p.slot_start).toLocaleTimeString()}〜${new Date(p.slot_end).toLocaleTimeString()}）`;
-      await sendPush(sb, [p.user_id], title, body, { kind: 'dpa-window', name: p.attraction_name, park_id: p.park_id, purchase_id: p.id });
-      await sb.from('dpa_purchases').update({ notified: true }).eq('id', p.id);
-      touched++;
+      // WebPush 送信（失敗は握りつぶし）
+      for(const s of subs){
+        const payload = JSON.stringify({ title, body, url: '/' });
+        const pushSub = { endpoint:s.endpoint, keys:{ p256dh:s.p256dh, auth:s.auth } };
+        webpush.sendNotification(pushSub, payload).catch(()=>{});
+      }
     }
+    return { statusCode:202, body:'ok' };
+  }catch(e){
+    console.error(e);
+    return { statusCode:500, body:String(e?.message||e) };
   }
-  return { statusCode: 200, body: JSON.stringify({ ok: true, touched }) };
-};
+}
