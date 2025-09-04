@@ -168,13 +168,19 @@
     body { padding-bottom: 80px; }
   }
 
-  /* モバイルカード表示 */
+  /* デフォルトでカードを非表示 */
+  .qt-cards { display: none; }
+  
+  /* モバイルのみカード表示 */
   @media (max-width: 480px) {
-    #qt table { display: none; }
-    .qt-cards { display: block; }
+    #qt table { display: none !important; }
+    .qt-cards { display: block !important; }
   }
+  
+  /* PCではテーブルのみ表示 */
   @media (min-width: 481px) {
-    .qt-cards { display: none; }
+    #qt table { display: table !important; }
+    .qt-cards { display: none !important; }
   }
 
   .qt-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
