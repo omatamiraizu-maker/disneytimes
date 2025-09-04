@@ -94,6 +94,9 @@
       <h3 style="margin-top:0">🎫 DPA / PP ステータス</h3>
       <div class="row">
         <span class="pill">自動更新</span>
+        <label class="pill"><input type="checkbox" id="fFavOnly"> お気に入りのみ</label>
+        <label class="pill"><input type="checkbox" id="fDpaOnSale"> DPA販売中のみ</label>
+        <label class="pill"><input type="checkbox" id="fPpOnSale"> PP発行中のみ</label>
         <span id="dpaUpdated" class="tag"></span>
       </div>
       <div id="dpa"></div>
@@ -357,6 +360,9 @@ supabase.auth.onAuthStateChange(()=>refreshAuthUI());
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
 const dpaDiv = document.getElementById('dpa');
+const fFavOnly = document.getElementById('fFavOnly');
+const fDpaOnSale = document.getElementById('fDpaOnSale');
+const fPpOnSale  = document.getElementById('fPpOnSale');
 const feedDiv = document.getElementById('feed');
 const nowTipsDiv = document.getElementById('nowTips');
 const shareLink=document.getElementById('shareLink');
@@ -435,10 +441,17 @@ function applyFilters(list){
   let out=list.slice(0);
   if (fKids.checked){ out = out.filter(x=> /カルーセル|ダンボ|スモール|バギー|ティンカ|ゴーコースター|メリー|キャラバン/i.test(x.nameJa)); }
   if (Number(fMaxWait.value) < 999){ out = out.filter(x=> (x.wait??999) <= Number(fMaxWait.value)); }
-  if (fDpaOnly.checked){
-    const dpaSet=new Set(state.dpa.filter(d=>d.dpa_status==='販売中'||d.dpa_status==='要確認（記載あり）').map(d=>d.name));
+  // DPA販売中のみ（DPAセクションのチェックと連動）
+  if (fDpaOnSale?.checked){
+    const dpaSet = new Set(state.dpa.filter(d=> d.dpa_status==='販売中').map(d=>d.name));
     out = out.filter(x=> dpaSet.has(x.nameJa));
   }
+  // お気に入りのみ（DPA/待ち時間 両方に効かせる）
+  if (fFavOnly?.checked){
+    const favs = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
+    out = out.filter(x=> favs.has(x.nameJa));
+  }
+  
   if (sortBy.value==='wait') out.sort((a,b)=>(a.wait??999)-(b.wait??999));
   else if (sortBy.value==='open') out.sort((a,b)=> (b.open?1:0)-(a.open?1:0));
   else out.sort((a,b)=>a.nameJa.localeCompare(b.nameJa,'ja'));
@@ -483,32 +496,42 @@ async function renderNowTips(){
   nowTipsDiv.textContent = scored.slice(0,3).map(x=> `${x.nameJa}（${x.wait??'-'}分 / 予測${x.median??'-'}）`).join(' / ');
 }
 
-// DPA / PP auto-only
+// ===== DPA / PP（最新 / 1クエリ） =====
 async function loadDPA(){
-  const parkCode=parkSel.value==='274'?'TDL':'TDS';
-  const { data: parks } = await supabase.from('parks').select('id,code').eq('code',parkCode);
-  if(!parks?.length){ dpaDiv.textContent='parks なし'; return; }
-  const parkId=parks[0].id;
-  const { data: attrs } = await supabase.from('attractions').select('id,name,park_id').eq('park_id',parkId);
-  const latest=[];
-  for(const a of attrs||[]){
-    const { data: rows } = await supabase.from('attraction_status').select('dpa_status,pp40_status,fetched_at').eq('attraction_id',a.id).order('fetched_at',{ascending:false}).limit(1);
-    if(rows&&rows[0]) latest.push({ name:a.name, dpa_status:rows[0].dpa_status, pp40_status:rows[0].pp40_status, t:rows[0].fetched_at });
-  }
-  latest.sort((x,y)=>x.name.localeCompare(y.name,'ja'));
-  state.dpa=latest;
+  const parkCode = parkSel.value==='274' ? 'TDL' : 'TDS';
+  const { data: parks } = await supabase.from('parks').select('id,code').eq('code', parkCode);
+  if (!parks?.length){ dpaDiv.textContent='parks なし'; return; }
+  const parkInternalId = parks[0].id; // v_attraction_dpa_latest の park_id は内部ID
+  const { data } = await supabase
+    .from('v_attraction_dpa_latest')
+    .select('name,dpa_status,pp40_status,fetched_at')
+    .eq('park_id', parkInternalId);
+  const latest = (data||[]).map(r=>({ name:r.name, dpa_status:r.dpa_status, pp40_status:r.pp40_status, t:r.fetched_at }));
+  latest.sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+  state.dpa = latest;
+  
+  // フィルタ（お気に入り / 販売中 / 発行中）
+  const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
+  const filtered = latest.filter(r=>{
+    if (fFavOnly?.checked && !favSet.has(r.name)) return false;
+    if (fDpaOnSale?.checked && r.dpa_status!=='販売中') return false;
+    if (fPpOnSale?.checked  && !(r.pp40_status==='発行中/対象' || r.pp40_status==='対象')) return false;
+    return true;
+  });
+  
   const tbl=el('table',{},[
     el('thead',{},el('tr',{},[el('th',{},'施設'),el('th',{},'DPA'),el('th',{},'PP(40th)'),el('th',{},'更新')])),
-    el('tbody',{}, latest.map(r=> el('tr',{},[
-      el('td',{}, r.name),
-      el('td',{}, el('span',{class:'tag dpa'}, r.dpa_status||'-')),
-      el('td',{}, el('span',{class:'tag pp'}, r.pp40_status||'-')),
-      el('td',{}, new Date(r.t).toLocaleTimeString())
-    ])))
-  ]);
-  dpaDiv.innerHTML=''; dpaDiv.appendChild(tbl);
+    el('tbody',{}, filtered.map(r=> el('tr',{},[
+       el('td',{}, r.name),
+       el('td',{}, el('span',{class:'tag dpa'}, r.dpa_status||'-')),
+       el('td',{}, el('span',{class:'tag pp'}, r.pp40_status||'-')),
+       el('td',{}, new Date(r.t).toLocaleTimeString())
+     ])))
+   ]);
+   dpaDiv.innerHTML=''; dpaDiv.appendChild(tbl);
+  // DPA の最終更新（最大時刻）
   const latestDpaTs = latest.length ? latest.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.t)? mx : r.t), latest[0].t) : null;
-  setUpdated(document.getElementById('dpaUpdated'), latestDpaTs, 10);
+  setUpdated(document.getElementById('dpaUpdated'), latestDpaTs, 10); // 10分超で stale
 }
 
 // Favorites and presets (unchanged core)
@@ -751,7 +774,8 @@ btnNotify.onclick=async()=>{
   alert(resp.ok?'通知を登録しました':'通知登録に失敗しました');
 };
 
-document.getElementById('btnRefresh').onclick = async () => { await loadQT(true); };
+// 手動更新ボタン（待ち時間のみ）
+document.getElementById('btnRefresh').onclick = async ()=>{ await loadQT(true); };
 parkSel.onchange = async () => { await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadPresets(); };
 
 let autoTimer=null, dpaTimer=null;
