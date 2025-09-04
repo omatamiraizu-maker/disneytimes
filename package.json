@@ -2,6 +2,7 @@
   "name": "tdr-dpa-app",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "netlify dev",
     "build": "echo 'Static site'",
@@ -18,13 +19,4 @@
     "esbuild": "^0.23.0"
   }
 }
-{
-  "name": "tdr-netlify",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
-    "cheerio": "^1.0.0",
-    "web-push": "^3.6.7"
-  }
-}
+
