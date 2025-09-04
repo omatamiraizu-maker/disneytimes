@@ -42,15 +42,23 @@
   /* モバイルはカードUIを優先して使う（テーブルは隠す） */
   @media (max-width: 480px) {
     #qt table { display: none; }
-    .qt-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
-    .qt-card {
-      background:#0b1220; border:1px solid var(--line); border-radius:12px; padding:12px;
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-    }
-    .qt-card .title { font-weight:600; }
-    .qt-card .meta { font-size:12px; color:var(--mute); }
-    .qt-card .wait { font: 700 18px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
-    .qt-card .star { font-size:20px; cursor:pointer; }
+    .qt-cards { display: block; } /* PCでは非表示にする */
+  }
+  @media (min-width: 481px) {
+    .qt-cards { display: none; } /* PC/タブレットではカードを非表示 */
+  }
+  /* カードUIのスタイル（全画面幅対応） */
+  .qt-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .qt-card {
+    background:#0b1220; border:1px solid var(--line); border-radius:12px; padding:12px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .qt-card .title { font-weight:600; }
+  .qt-card .meta { font-size:12px; }
+  .qt-card .meta.open { color:var(--good); } /* 運営中は緑 */
+  .qt-card .meta.closed { color:var(--bad); } /* 休止は赤 */
+  .qt-card .wait { font: 700 18px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
+  .qt-card .star { font-size:20px; cursor:pointer; }
   }
   .tag.stale{ border-color:#7f1d1d; color:#fca5a5 }
   .tag.fresh{ border-color:#1e3a8a; color:#93c5fd }
@@ -497,7 +505,7 @@ function renderQT(){
       return el('div',{class:'qt-card'},[
         el('div',{},[
           el('div',{class:'title'}, r.nameJa),
-          el('div',{class:'meta'}, r.open ? '運営中' : '休止')
+          el('div',{class:`meta ${r.open ? 'open' : 'closed'}`}, r.open ? '運営中' : '休止')  // ← ここが修正箇所
         ]),
         el('div',{class:'wait'}, (r.wait ?? '-') + '分'),
         el('div',{class:'star', onclick:()=>toggleFav(r.nameRaw)}, fav?'★':'☆')
