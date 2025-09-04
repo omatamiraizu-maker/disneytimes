@@ -303,6 +303,7 @@
     <div class="panel">
       <h3 style="margin-top:0">🎫 DPA / PP ステータス</h3>
       <div class="row">
+        <button id="btnFetchDpa" class="cta">最新を取得（約15秒）</button>
         <span class="pill">自動更新</span>
         <label class="pill"><input type="checkbox" id="fFavOnlyDpa"> お気に入りのみ</label>
         <label class="pill"><input type="checkbox" id="fDpaOnSale"> DPA販売中のみ</label>
@@ -1349,6 +1350,25 @@ document.addEventListener('touchend', async (e) => {
   pullStartY = 0;
   pullDistance = 0;
 });
+// DPA取り込みを手動でキック（約15秒後に最新を表示）
+const btnFetchDpa = document.getElementById('btnFetchDpa');
+if (btnFetchDpa) {
+  btnFetchDpa.onclick = async () => {
+    try {
+      btnFetchDpa.disabled = true;
+      const prev = btnFetchDpa.textContent;
+      btnFetchDpa.textContent = '取得中…（約15秒）';
+      // 背景関数をPOSTで起動（すぐ 202 が返る）
+      await fetch('/.netlify/functions/ingest-tdr-dpa-background', { method: 'POST' }).catch(()=>{});
+      // 取り込み完了を待つ（15秒後に最新を読む）
+      await new Promise(r => setTimeout(r, 15000));
+      await loadDPA(); // ← 既存のDPAテーブル再描画関数（app.htmlに実装済み）
+      btnFetchDpa.textContent = prev;
+    } finally {
+      btnFetchDpa.disabled = false;
+    }
+  };
+}
 
 // 初期読み込み
 await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets();
