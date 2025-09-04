@@ -4,11 +4,23 @@
   functions = "netlify/functions"
 
 [functions]
-  node_bundler = "esbuild"
+node_bundler = "esbuild"
+external_node_modules = ["cheerio","@supabase/supabase-js","web-push"]
+
+# 毎分：通知（軽い）
+[[scheduled.functions]]
+name = "notify-dpa-window-background"
+schedule = "*/1 * * * *"
+
+# 1分毎：DPA/PP 取り込み（必要に応じて調整）
+[[scheduled.functions]]
+name = "ingest-tdr-dpa-background"
+schedule = "*/1 * * * *"
 
 [[headers]]
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
+
 
 
