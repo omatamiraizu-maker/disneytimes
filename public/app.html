@@ -327,6 +327,7 @@
         <label class="pill"><input type="checkbox" id="fFavOnlyDpa"> お気に入りのみ</label>
         <label class="pill"><input type="checkbox" id="fDpaOnSale"> DPA販売中のみ</label>
         <label class="pill"><input type="checkbox" id="fPpOnSale"> PP発行中のみ</label>
+        <label class="pill"><input type="checkbox" id="fShowAllDpa"> すべて表示</label>
         <span id="dpaUpdated" class="tag"></span>
       </div>
       <div id="dpa"></div>
@@ -913,9 +914,18 @@ async function loadDPA(){
   // フィルタ（お気に入り/販売中のみ 等）
   const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
   const filtered = latest.filter(r=>{
+    // お気に入りのみ
     if (fFavOnlyDpa?.checked && !favSet.has(r.name)) return false;
+    // DPA販売中のみ
     if (fDpaOnSale?.checked && r.dpa_status!=='販売中') return false;
-    if (fPpOnSale?.checked && !(r.pp40_status==='発行中' || r.pp40_status==='発行中/対象' || r.pp40_status==='対象')) return false;
+    // PP発行中のみ
+    if (fPpOnSale?.checked && !(r.pp40_status==='発行中' || r.pp40_status==='対象')) return false;
+    // すべて表示 OFF のときは「DPA=記載なし AND PP=記載なし」を隠す
+    if (!fShowAllDpa?.checked) {
+      const dpaNone = !r.dpa_status || r.dpa_status==='記載なし';
+      const ppNone  = !r.pp40_status || r.pp40_status==='記載なし';
+      if (dpaNone && ppNone) return false;
+    }
     return true;
   });
 
@@ -1053,23 +1063,55 @@ async function loadPurchases(){
   state.purchases=data||[]; renderPurchases(); renderEvents(); showAutoScheduleLinkForToday();
   state.fixedAuto = (data||[]).map(p => ({ name:p.attraction_name, start:new Date(p.slot_start), dur:Math.max(1, Math.round((new Date(p.slot_end)-new Date(p.slot_start))/60000)), method:'DPA' }));
 }
+  
+// JSTのHH:MMで安全に表示（null/未パース対策・スペース区切りISO対策）
+function fmtJST_HM(ts){
+  if (!ts) return '-';
+  const iso = typeof ts === 'string' ? ts.replace(' ', 'T') : ts;
+  const d = new Date(iso);
+  if (isNaN(d)) return '-';
+  return d.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo', hour12: false, hour: '2-digit', minute: '2-digit'
+  });
+}
 
 function renderPurchases(){
-  const box=document.getElementById('purchases'); box.innerHTML='';
-  const tbl=el('table',{},[
-    el('thead',{},el('tr',{},[el('th',{},'施設'),el('th',{},'時間帯'),el('th',{},'カウントダウン'),el('th',{},'枚数'),el('th',{},'メモ'),el('th',{},'状態'),el('th',{},'操作')])),
-    el('tbody',{}, (state.purchases||[]).map(p=>el('tr',{},[
-      el('td',{},p.attraction_name),
-      el('td',{}, new Date(p.slot_start).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, hour:'2-digit', minute:'2-digit' }) + '〜' + new Date(p.slot_end).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, hour:'2-digit', minute:'2-digit' }),
-      el('td',{}, el('span',{class:'dpa-countdown'}, getTimeUntil(p.slot_start))),
-      el('td',{},String(p.quantity)),
-      el('td',{},p.note||''),
-      el('td',{}, p.used ? '使用済' : '未使用'),
-      el('td',{}, el('button',{onclick:async()=>{ await supabase.from('dpa_purchases').update({ used: !p.used }).eq('id',p.id); await loadPurchases(); }}, p.used?'未使用に戻す':'使用済にする'))
+  const box = document.getElementById('purchases');
+  box.innerHTML = '';
+
+  const rows = (state.purchases || []);
+
+  const tbl = el('table', {}, [
+    el('thead', {}, el('tr', {}, [
+      el('th', {}, '施設'),
+      el('th', {}, '時間帯'),
+      el('th', {}, 'カウントダウン'),
+      el('th', {}, '枚数'),
+      el('th', {}, 'メモ'),
+      el('th', {}, '状態'),
+      el('th', {}, '操作'),
+    ])),
+    el('tbody', {}, rows.map(p => el('tr', {}, [
+      el('td', {}, p.attraction_name || '-'),
+      el('td', {}, `${fmtJST_HM(p.slot_start)}〜${fmtJST_HM(p.slot_end)}`),
+      el('td', {}, el('span', { class: 'dpa-countdown' }, getTimeUntil(p.slot_start))),
+      el('td', {}, String(p.quantity ?? '-')),
+      el('td', {}, p.note || ''),
+      el('td', {}, p.used ? '使用済' : '未使用'),
+      el('td', {}, el('button', {
+        onclick: async () => {
+          await supabase.from('dpa_purchases')
+            .update({ used: !p.used })
+            .eq('id', p.id);
+          await loadPurchases();
+        }
+      }, p.used ? '未使用に戻す' : '使用済にする'))
     ])))
   ]);
+
   box.appendChild(tbl);
 }
+
 
 document.getElementById('btnAddPurchase').onclick=async()=>{
   const { data:{user} }=await supabase.auth.getUser(); 
@@ -1333,6 +1375,7 @@ parkSel.onchange = async () => { await loadRules(); await loadFavs(); await load
 
 // DPAフィルタのイベント
 fFavOnlyDpa.onchange = fDpaOnSale.onchange = fPpOnSale.onchange = () => loadDPA();
+document.getElementById('fShowAllDpa').onchange = () => loadDPA();
 fMaxWait.onchange = sortBy.onchange = () => renderQT();
 
 let autoTimer=null, dpaTimer=null;
