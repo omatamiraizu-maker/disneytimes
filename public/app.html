@@ -195,6 +195,25 @@
   .qt-card .wait { font: 700 18px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
   .qt-card .star { font-size:20px; cursor:pointer; }
 
+  /* DPA/PP カード */
+  .dpa-cards { display: none; }                /* デフォは非表示（PC） */
+  .dpa-card {
+    background:#0b1220; border:1px solid var(--line); border-radius:12px; padding:12px;
+    display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
+  }
+  .dpa-card .title { font-weight:600; }
+  .dpa-card .badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .dpa-card .when { font-size:12px; color:var(--mute); }
+  .tag.good { color: var(--good);  border-color: #14532d; }
+  .tag.bad  { color: var(--bad);   border-color: #7f1d1d; }
+  .tag.warn { color: var(--warn);  border-color: #713f12; }
+  
+  /* スマホではカード表示、テーブル非表示 */
+  @media (max-width: 480px) {
+    #dpa table { display:none !important; }
+    .dpa-cards { display:grid !important; grid-template-columns:1fr; gap:8px; }
+  }
+
   .tag.stale{ border-color:#7f1d1d; color:#fca5a5 }
   .tag.fresh{ border-color:#1e3a8a; color:#93c5fd }
 
@@ -867,28 +886,66 @@ async function loadDPA(){
     .from('v_attraction_dpa_latest')
     .select('name,dpa_status,pp40_status,fetched_at')
     .eq('park_id', parkInternalId);
-  const latest = (data||[]).map(r=>({ name:r.name, dpa_status:r.dpa_status, pp40_status:r.pp40_status, t:r.fetched_at }));
-  latest.sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+  // 整形＆並び順（販売中/発行中を先頭）
+  const latest = (data||[]).map(r=>({
+    name: r.name, dpa_status: r.dpa_status, pp40_status: r.pp40_status, t: r.fetched_at
+  }));
   state.dpa = latest;
 
+  const score = v => (v==='販売中'||v==='発行中') ? 2 : (v==='対象' ? 1 : 0);
+  // 販売中/発行中が高スコア → 名前順
+  latest.sort((a,b)=>{
+    const ka = score(a.dpa_status) + score(a.pp40_status);
+    const kb = score(b.dpa_status) + score(b.pp40_status);
+    return (kb - ka) || a.name.localeCompare(b.name,'ja');
+  });
+
+  // フィルタ（お気に入り/販売中のみ 等）
   const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
   const filtered = latest.filter(r=>{
     if (fFavOnlyDpa?.checked && !favSet.has(r.name)) return false;
     if (fDpaOnSale?.checked && r.dpa_status!=='販売中') return false;
-    if (fPpOnSale?.checked  && !(r.pp40_status==='発行中/対象' || r.pp40_status==='対象')) return false;
+    if (fPpOnSale?.checked && !(r.pp40_status==='発行中' || r.pp40_status==='発行中/対象' || r.pp40_status==='対象')) return false;
     return true;
   });
 
+  // 共通：色クラス
+  const clsDpa = s => s==='販売中' ? 'good' : (s==='販売終了' ? 'bad' : (s==='対象' ? 'warn' : ''));
+  const clsPp  = s => s==='発行中' ? 'good' : (s==='発行終了' ? 'bad' : (s==='対象' ? 'warn' : ''));
+
+  // テーブル（PC向け）
   const tbl=el('table',{},[
-    el('thead',{},el('tr',{},[el('th',{},'施設'),el('th',{},'DPA'),el('th',{},'PP(40th)'),el('th',{},'更新')])),
+    el('thead',{},el('tr',{},[
+      el('th',{},'施設'), el('th',{},'DPA'), el('th',{},'PP'), el('th',{},'更新')
+    ])),
     el('tbody',{}, filtered.map(r=> el('tr',{},[
-       el('td',{}, r.name),
-       el('td',{}, el('span',{class:'tag dpa'}, r.dpa_status||'-')),
-       el('td',{}, el('span',{class:'tag pp'}, r.pp40_status||'-')),
-       el('td',{}, new Date(r.t).toLocaleTimeString())
-     ])))
-   ]);
-   dpaDiv.innerHTML=''; dpaDiv.appendChild(tbl);
+      el('td',{}, r.name),
+      el('td',{}, el('span',{class:'tag dpa '+clsDpa(r.dpa_status)}, r.dpa_status||'-')),
+      el('td',{}, el('span',{class:'tag pp '+clsPp(r.pp40_status)}, r.pp40_status||'-')),
+      el('td',{}, new Date(r.t).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))
+    ])))
+  ]);
+
+  // カード（スマホ向け）
+  const cardsWrap = el('div',{class:'dpa-cards'},
+    filtered.map(r=> el('div',{class:'dpa-card'},[
+      el('div',{},[
+        el('div',{class:'title'}, r.name),
+        el('div',{class:'badges'},[
+          el('span',{class:'tag dpa '+clsDpa(r.dpa_status)}, 'DPA: ' + (r.dpa_status||'-')),
+          el('span',{class:'tag pp  '+clsPp(r.pp40_status)}, 'PP: ' + (r.pp40_status||'-')),
+        ]),
+        el('div',{class:'when'}, new Date(r.t).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))
+      ])
+    ]))
+  );
+
+  // 出力
+  dpaDiv.innerHTML='';
+  dpaDiv.appendChild(tbl);
+  dpaDiv.appendChild(cardsWrap);
+
+  // 更新ラベル
   const latestDpaTs = latest.length ? latest.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.t)? mx : r.t), latest[0].t) : null;
   setUpdated(document.getElementById('dpaUpdated'), latestDpaTs, 10);
 }
