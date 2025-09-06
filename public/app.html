@@ -672,13 +672,23 @@ function areaOf(nameJa){
   const m = AREA_MAP[parkSel.value]; 
   return m?.get(normalizeTitle(nameJa)) || '?'; 
 }
-function fmtUpdated(ts){ 
-  if (!ts) return ''; 
-  const d=new Date(ts); 
-  const pad=n=>String(n).padStart(2,'0'); 
-  const hhmm = pad(d.getHours()) + ':' + pad(d.getMinutes()); 
-  const diffMin=Math.max(0,Math.round((Date.now()-d.getTime())/60000)); 
-  return '最終更新 ' + hhmm + '（' + diffMin + '分前）'; 
+function fmtUpdated(ts){
+  if (!ts) return '';
+  // スペース区切り対策（Safari等）
+  const iso = typeof ts === 'string' ? ts.replace(' ', 'T') : ts;
+  const d = new Date(iso);
+
+  if (isNaN(d)) return ''; // 念のため
+
+  // JSTの時刻表示（HH:MM）
+  const hhmm = d.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo', hour12: false, hour: '2-digit', minute: '2-digit'
+  });
+
+  // 経過分（UTC基準のエポック差なのでTZ非依存）
+  const diffMin = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+
+  return '最終更新 ' + hhmm + '（' + diffMin + '分前）';
 }
 function setUpdated(el, ts, staleMinutes){ 
   if (!el) return; 
@@ -1050,7 +1060,7 @@ function renderPurchases(){
     el('thead',{},el('tr',{},[el('th',{},'施設'),el('th',{},'時間帯'),el('th',{},'カウントダウン'),el('th',{},'枚数'),el('th',{},'メモ'),el('th',{},'状態'),el('th',{},'操作')])),
     el('tbody',{}, (state.purchases||[]).map(p=>el('tr',{},[
       el('td',{},p.attraction_name),
-      el('td',{}, new Date(p.slot_start).toLocaleTimeString() + '〜' + new Date(p.slot_end).toLocaleTimeString()),
+      el('td',{}, new Date(p.slot_start).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, hour:'2-digit', minute:'2-digit' }) + '〜' + new Date(p.slot_end).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, hour:'2-digit', minute:'2-digit' }),
       el('td',{}, el('span',{class:'dpa-countdown'}, getTimeUntil(p.slot_start))),
       el('td',{},String(p.quantity)),
       el('td',{},p.note||''),
@@ -1240,7 +1250,7 @@ async function loadFeed(){
   for(const n of data||[]){ 
     const row=document.createElement('div'); 
     row.className='row'; 
-    row.textContent='[' + new Date(n.created_at).toLocaleTimeString() + '] ' + n.title + ' - ' + n.body; 
+    row.textContent='[' + new Date(n.created_at).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' }) + '] ' + n.title + ' - ' + n.body; 
     feedDiv.prepend(row); 
   } 
 }
