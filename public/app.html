@@ -1499,19 +1499,57 @@ document.getElementById('filterFavOnly').onclick = function() {
   renderQT();
 };
 
-// 運営/休止 相互排他トグル
-tgOpenOnly.onclick = () => {
-  tgOpenOnly.classList.toggle('active');
-  fOpenOnly.checked = tgOpenOnly.classList.contains('active');
-  if (fOpenOnly.checked) { tgClosedOnly.classList.remove('active'); fClosedOnly.checked = false; }
+// ==== 運営/休止 相互排他トグル（堅牢版） ====
+// ラベルとinputの状態を双方向で同期させる
+function syncOpenClosedUI() {
+  if (fOpenOnly)  tgOpenOnly?.classList.toggle('active',  !!fOpenOnly.checked);
+  if (fClosedOnly)tgClosedOnly?.classList.toggle('active', !!fClosedOnly.checked);
+
+  // 相互排他：両方ONは許可しない
+  if (fOpenOnly?.checked && fClosedOnly?.checked) {
+    // 最後にONになった方を優先したいが、ここでは「open優先」でclosedを落とす
+    fClosedOnly.checked = false;
+    tgClosedOnly?.classList.remove('active');
+  }
+}
+
+// 1) ラベルをクリックしたとき（タップ含む）
+tgOpenOnly?.addEventListener('click', (e) => {
+  e.preventDefault(); // ラベルのデフォを抑制して自前でトグル
+  if (!fOpenOnly) return;
+  fOpenOnly.checked = !fOpenOnly.checked;
+  if (fOpenOnly.checked) { // 相互排他
+    fClosedOnly.checked = false;
+  }
+  syncOpenClosedUI();
   renderQT();
-};
-tgClosedOnly.onclick = () => {
-  tgClosedOnly.classList.toggle('active');
-  fClosedOnly.checked = tgClosedOnly.classList.contains('active');
-  if (fClosedOnly.checked) { tgOpenOnly.classList.remove('active'); fOpenOnly.checked = false; }
+});
+
+tgClosedOnly?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!fClosedOnly) return;
+  fClosedOnly.checked = !fClosedOnly.checked;
+  if (fClosedOnly.checked) { // 相互排他
+    fOpenOnly.checked = false;
+  }
+  syncOpenClosedUI();
   renderQT();
-};
+});
+
+// 2) 入力(change)を直接操作された場合（キーボード/アクセシビリティ等）
+fOpenOnly?.addEventListener('change', () => {
+  if (fOpenOnly.checked) fClosedOnly.checked = false;
+  syncOpenClosedUI();
+  renderQT();
+});
+fClosedOnly?.addEventListener('change', () => {
+  if (fClosedOnly.checked) fOpenOnly.checked = false;
+  syncOpenClosedUI();
+  renderQT();
+});
+
+// 3) 初期同期（ページロード直後・パーク切替後など）
+syncOpenClosedUI();
 
 // クイックフィルタ
 btnQuickEasy.onclick = () => { fMaxWait.value = 20; renderQT(); };
