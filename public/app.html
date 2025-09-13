@@ -246,6 +246,53 @@
     to { transform: rotate(360deg); }
   }
   .pull-text { margin-left: 12px; color: var(--mute); }
+  /* ==== UI: 一貫化テーマ & タブ/強調色 強化 ==== */
+
+/* 統一トーン（既存カラー変えずにアクセントだけ調整） */
+.badge { border:1px solid var(--line); border-radius:10px; padding:2px 8px; font-size:12px; }
+.badge.on   { color: var(--good);  border-color:#14532d; background: rgba(34,197,94,.10); }
+.badge.off  { color: #9ca3af;     border-color:#374151; background: rgba(156,163,175,.10); }
+.badge.warn { color: var(--warn);  border-color:#713f12; background: rgba(251,191,36,.10); }
+
+.status-chip { font-weight:700; padding:2px 8px; border-radius:8px; }
+.status-open   { color: var(--good);  background: rgba(34,197,94,.15); }
+.status-closed { color: var(--bad);   background: rgba(239,68,68,.15); }
+
+/* DPA/PP 統一表示 */
+.dpa-on  { color: var(--good);  border-color:#14532d; }
+.dpa-end { color: #9ca3af;      border-color:#374151; }
+.pp-on   { color: #a78bfa;      border-color:#4c1d95; } /* PPは紫系で統一 */
+
+/* 見出し下にタブ（PC向け） */
+.tabs {
+  display:flex; gap:8px; padding:8px 0; position:sticky; top:52px; z-index:9;
+  background:#0b1220; border-bottom:1px solid var(--line);
+}
+.tab-btn {
+  border:1px solid var(--line); border-radius:999px; padding:8px 14px; cursor:pointer;
+  background:var(--panel); color:var(--ink); font-weight:600; transition:.2s;
+}
+.tab-btn.active { background: var(--accent); color:#000; border-color:var(--accent); }
+
+/* 下部ナビのアクティブ強調（モバイル） */
+.bottom-nav .nav-item.active { background: var(--panel); border:1px solid var(--accent); }
+
+/* カード影・角丸をやや強調 */
+.panel, .qt-card, .dpa-card, .card {
+  box-shadow: 0 6px 16px rgba(0,0,0,.25);
+  border-radius:16px;
+}
+
+/* テーブルのヘッダ強調 */
+thead th { color:#cbd5e1; font-weight:700; }
+
+/* 便利トグル（チップ風） */
+.pill.toggle { cursor:pointer; user-select:none; }
+.pill.toggle input[type="checkbox"]{ display:none; }
+.pill.toggle.active{ border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* セクション間の余白 微調整 */
+.panel h3 { display:flex; align-items:center; gap:8px; }
 </style>
 </head>
 <body>
@@ -265,6 +312,13 @@
     </div>
   </div>
 </div></header>
+  
+<nav class="tabs" id="topTabs">
+  <button class="tab-btn active" data-target="qt">⏱ 待ち時間</button>
+  <button class="tab-btn" data-target="dpa">🎫 DPA/PP</button>
+  <button class="tab-btn" data-target="favs">⭐ お気に入り</button>
+  <button class="tab-btn" data-target="schedule">📅 スケジュール</button>
+</nav>
 
 <main class="wrap g">
   <!-- 混雑度インジケーター -->
@@ -292,9 +346,27 @@
       <label class="filter-btn" id="filterDpaOnly"><input type="checkbox" id="fDpaOnly"> DPA対象のみ</label>
       <label class="filter-btn" id="filterKids"><input type="checkbox" id="fKids"> こども向け</label>
       <label class="filter-btn" id="filterFavOnly"><input type="checkbox" id="fFavOnly"> ★ お気に入りのみ</label>
+      
       <label class="pill">待ち時間 ≤ <input type="number" id="fMaxWait" value="999" class="w120"> 分</label>
+      
+      <!-- 追加: ステータス / エリア / クイック -->
+      <label class="pill toggle" id="tgOpenOnly"><input type="checkbox" id="fOpenOnly">運営中のみ</label>
+      <label class="pill toggle" id="tgClosedOnly"><input type="checkbox" id="fClosedOnly">休止中のみ</label>
+      <label class="pill">エリア
+        <select id="areaSel"><option value="">すべて</option></select>
+      </label>
+      <button type="button" id="btnQuickEasy" class="pill">空いてる(≤20分)</button>
+      <button type="button" id="btnQuickFavDpa" class="pill">★&DPA販売中</button>
+      
       <label class="pill">並び順：
-        <select id="sortBy"><option value="name">名前</option><option value="wait">待ち時間（短い順）</option><option value="open">運営中を先に</option></select>
+        <select id="sortBy">
+          <option value="name">名前</option>
+          <option value="wait">待ち時間（短い順）</option>
+          <option value="wait_desc">待ち時間（長い順）</option>
+          <option value="open">運営中を先に</option>
+          <option value="fav_first">★を先に</option>
+          <option value="dpa_first">DPA販売中を先に</option>
+        </select>
       </label>
     </div>
   </section>
@@ -329,6 +401,15 @@
         <label class="pill"><input type="checkbox" id="fPpOnSale"> PP発行中のみ</label>
         <label class="pill"><input type="checkbox" id="fShowAllDpa"> すべて表示</label>
         <span id="dpaUpdated" class="tag"></span>
+        <label class="pill">並び順：
+          <select id="sortByDpa">
+            <option value="smart">販売/発行中を先に（既定）</option>
+            <option value="name">名前</option>
+            <option value="dpa">DPA販売中を先に</option>
+            <option value="pp">PP発行中を先に</option>
+            <option value="recent">更新が新しい順</option>
+          </select>
+        </label>
       </div>
       <div id="dpa"></div>
     </div>
@@ -648,6 +729,15 @@ const evDur = document.getElementById('evDur');
 const btnAddEvent = document.getElementById('btnAddEvent');
 const eventsList = document.getElementById('eventsList');
 
+const fOpenOnly   = document.getElementById('fOpenOnly');
+const fClosedOnly = document.getElementById('fClosedOnly');
+const tgOpenOnly  = document.getElementById('tgOpenOnly');
+const tgClosedOnly= document.getElementById('tgClosedOnly');
+const areaSel     = document.getElementById('areaSel');
+const btnQuickEasy    = document.getElementById('btnQuickEasy');
+const btnQuickFavDpa  = document.getElementById('btnQuickFavDpa');
+const sortByDpa   = document.getElementById('sortByDpa');
+
 const state={ favorites:new Set(), qt:[], dpa:[], rules:null, purchases:[], parades:[], fixedManual:[], fixedAuto:[] };
 
 function el(tag, attrs={}, children=[]){ const e=document.createElement(tag); for(const[k,v] of Object.entries(attrs)){ if(k==='class') e.className=v; else if(k.startsWith('on')) e.addEventListener(k.slice(2),v); else e.setAttribute(k,v); } for(const c of (Array.isArray(children)?children:[children])) e.appendChild(typeof c==='string'?document.createTextNode(c):c); return e; }
@@ -673,6 +763,14 @@ function areaOf(nameJa){
   const m = AREA_MAP[parkSel.value]; 
   return m?.get(normalizeTitle(nameJa)) || '?'; 
 }
+
+function populateAreas(){
+  const m = AREA_MAP[parkSel.value] || new Map();
+  const uniq = new Set([...m.values()]);
+  const opts = ['<option value="">すべて</option>', ...[...uniq].map(a => `<option value="${a}">${a}</option>`)];
+  areaSel.innerHTML = opts.join('');
+}
+
 function fmtUpdated(ts){
   if (!ts) return '';
   // スペース区切り対策（Safari等）
@@ -769,27 +867,59 @@ async function loadQT(forceHeal=false){
 }
 
 function applyFilters(list){
-  let out=list.slice(0);
+  let out = list.slice(0);
+
+  // 既存：DPA対象・こども向け・待ち時間・★のみ
   if (fDpaOnly.checked){
     const dpaSet = new Set(state.dpa.map(d=>d.name));
     out = out.filter(x=> dpaSet.has(x.nameJa));
   }
-  if (fKids.checked){ out = out.filter(x=> /カルーセル|ダンボ|スモール|バギー|ティンカ|ゴーコースター|メリー|キャラバン/i.test(x.nameJa)); }
-  if (Number(fMaxWait.value) < 999){ out = out.filter(x=> (x.wait??999) <= Number(fMaxWait.value)); }
-  if (fDpaOnSale?.checked){
-    const dpaSet = new Set(state.dpa.filter(d=> d.dpa_status==='販売中').map(d=>d.name));
-    out = out.filter(x=> dpaSet.has(x.nameJa));
+  if (fKids.checked){
+    out = out.filter(x=> /カルーセル|ダンボ|スモール|バギー|ティンカ|ゴーコースター|メリー|キャラバン/i.test(x.nameJa));
+  }
+  if (Number(fMaxWait.value) < 999){
+    out = out.filter(x=> (x.wait??999) <= Number(fMaxWait.value));
   }
   if (fFavOnly?.checked){
     const favs = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
     out = out.filter(x=> favs.has(x.nameJa));
   }
 
-  if (sortBy.value==='wait') out.sort((a,b)=>(a.wait??999)-(b.wait??999));
-  else if (sortBy.value==='open') out.sort((a,b)=> (b.open?1:0)-(a.open?1:0));
-  else out.sort((a,b)=>a.nameJa.localeCompare(b.nameJa,'ja'));
+  // 追加：運営/休止の相互排他
+  if (fOpenOnly?.checked && !fClosedOnly?.checked) out = out.filter(x=> !!x.open);
+  if (fClosedOnly?.checked && !fOpenOnly?.checked) out = out.filter(x=> !x.open);
+
+  // 追加：エリア
+  if (areaSel?.value){
+    out = out.filter(x => areaOf(x.nameJa) === areaSel.value);
+  }
+
+  // 並び順
+  const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
+  const dpaOn  = new Set(state.dpa.filter(d=> d.dpa_status==='販売中').map(d=>d.name));
+
+  switch (sortBy.value) {
+    case 'wait':
+      out.sort((a,b)=>(a.wait??999)-(b.wait??999));
+      break;
+    case 'wait_desc':
+      out.sort((a,b)=>(b.wait??-1)-(a.wait??-1));
+      break;
+    case 'open':
+      out.sort((a,b)=> (b.open?1:0)-(a.open?1:0) || (a.wait??999)-(b.wait??999));
+      break;
+    case 'fav_first':
+      out.sort((a,b)=> (favSet.has(b.nameJa)?1:0)-(favSet.has(a.nameJa)?1:0) || a.nameJa.localeCompare(b.nameJa,'ja'));
+      break;
+    case 'dpa_first':
+      out.sort((a,b)=> (dpaOn.has(b.nameJa)?1:0)-(dpaOn.has(a.nameJa)?1:0) || a.nameJa.localeCompare(b.nameJa,'ja'));
+      break;
+    default: // name
+      out.sort((a,b)=>a.nameJa.localeCompare(b.nameJa,'ja'));
+  }
   return out;
 }
+
 
 function renderQT(){
   const rows = applyFilters(state.qt);
@@ -903,13 +1033,45 @@ async function loadDPA(){
   }));
   state.dpa = latest;
 
-  const score = v => (v==='販売中'||v==='発行中') ? 2 : (v==='対象' ? 1 : 0);
-  // 販売中/発行中が高スコア → 名前順
-  latest.sort((a,b)=>{
-    const ka = score(a.dpa_status) + score(a.pp40_status);
-    const kb = score(b.dpa_status) + score(b.pp40_status);
-    return (kb - ka) || a.name.localeCompare(b.name,'ja');
-  });
+  (function(){
+    const scoreDpa = v => (v === '販売中') ? 2 : (v === '対象' ? 1 : 0);
+    const scorePp  = v => (v === '発行中') ? 2 : (v === '対象' ? 1 : 0);
+  
+    switch (sortByDpa?.value || 'smart') {
+      case 'name':
+        // 名前順
+        latest.sort((a,b) => a.name.localeCompare(b.name, 'ja'));
+        break;
+  
+      case 'dpa':
+        // DPAが強い順（販売中→対象→その他）→ 名前
+        latest.sort((a,b) =>
+          (scoreDpa(b.dpa_status) - scoreDpa(a.dpa_status)) ||
+          a.name.localeCompare(b.name, 'ja')
+        );
+        break;
+  
+      case 'pp':
+        // PPが強い順（発行中→対象→その他）→ 名前
+        latest.sort((a,b) =>
+          (scorePp(b.pp40_status) - scorePp(a.pp40_status)) ||
+          a.name.localeCompare(b.name, 'ja')
+        );
+        break;
+  
+      case 'recent':
+        // 更新が新しい順
+        latest.sort((a,b) => new Date(b.t) - new Date(a.t));
+        break;
+  
+      default: // 'smart'（既定）：販売/発行中を先頭 → 名前
+        latest.sort((a,b) => {
+          const ka = scoreDpa(a.dpa_status) + scorePp(a.pp40_status);
+          const kb = scoreDpa(b.dpa_status) + scorePp(b.pp40_status);
+          return (kb - ka) || a.name.localeCompare(b.name, 'ja');
+        });
+    }
+  })();
 
   // フィルタ（お気に入り/販売中のみ 等）
   const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
@@ -1337,6 +1499,58 @@ document.getElementById('filterFavOnly').onclick = function() {
   renderQT();
 };
 
+// 運営/休止 相互排他トグル
+tgOpenOnly.onclick = () => {
+  tgOpenOnly.classList.toggle('active');
+  fOpenOnly.checked = tgOpenOnly.classList.contains('active');
+  if (fOpenOnly.checked) { tgClosedOnly.classList.remove('active'); fClosedOnly.checked = false; }
+  renderQT();
+};
+tgClosedOnly.onclick = () => {
+  tgClosedOnly.classList.toggle('active');
+  fClosedOnly.checked = tgClosedOnly.classList.contains('active');
+  if (fClosedOnly.checked) { tgOpenOnly.classList.remove('active'); fOpenOnly.checked = false; }
+  renderQT();
+};
+
+// クイックフィルタ
+btnQuickEasy.onclick = () => { fMaxWait.value = 20; renderQT(); };
+btnQuickFavDpa.onclick = () => {
+  fFavOnly.checked = true; document.getElementById('filterFavOnly').classList.add('active');
+  fDpaOnSale.checked = true;
+  loadDPA(); renderQT();
+};
+
+// エリア変更
+areaSel.onchange = () => renderQT();
+
+// DPA 並び順
+if (sortByDpa) sortByDpa.onchange = () => loadDPA();
+
+// タブ（上部）のスクロール & 強調
+document.querySelectorAll('#topTabs .tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#topTabs .tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.target;
+    let targetEl=null;
+    if (t==='qt')       targetEl = document.querySelector('.panel:has(#qt)');
+    if (t==='dpa')      targetEl = document.querySelector('.panel:has(#dpa)');
+    if (t==='favs')     targetEl = document.querySelector('.panel:has(#favs)');
+    if (t==='schedule') targetEl = document.querySelector('.panel:has(#planOut)');
+    if (targetEl) targetEl.scrollIntoView({ behavior:'smooth', block:'start' });
+  });
+});
+
+// 下部ナビのアクティブ強調
+document.querySelectorAll('.bottom-nav .nav-item').forEach(item=>{
+  item.addEventListener('click', function(){
+    document.querySelectorAll('.bottom-nav .nav-item').forEach(i=>i.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+
 // 初期状態設定
 if (fDpaOnly.checked) document.getElementById('filterDpaOnly').classList.add('active');
 if (fKids.checked) document.getElementById('filterKids').classList.add('active');
@@ -1371,7 +1585,12 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 // 手動更新ボタン（待ち時間のみ）
 document.getElementById('btnRefresh').onclick = async ()=>{ await loadQT(true); };
-parkSel.onchange = async () => { await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadPresets(); };
+parkSel.onchange = async () => {
+  await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades();
+  renderEvents(); await renderNowTips(); await loadPresets();
+  populateAreas(); areaSel.value = ''; // 追加
+};
+
 
 // DPAフィルタのイベント
 fFavOnlyDpa.onchange = fDpaOnSale.onchange = fPpOnSale.onchange = () => loadDPA();
@@ -1487,7 +1706,7 @@ if (btnFetchDpa) {
 }
 
 // 初期読み込み
-await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets();
+await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas();
 </script>
 </body>
 </html>
