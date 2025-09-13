@@ -1382,9 +1382,15 @@ let autoTimer=null, dpaTimer=null;
 const autoRefresh = document.getElementById('autoRefresh');
 function startAuto(){
   stopAuto();
-  autoTimer = setInterval(() => loadQT(false).catch(()=>{}), 60_000);
-  dpaTimer  = setInterval(() => loadDPA().catch(()=>{}), 180_000);
-  loadQT(false).catch(()=>{}); loadDPA().catch(()=>{});
+  // 待ち時間（Queue-Times）を 90 秒ごと
+  autoTimer = setInterval(() => loadQT(false).catch(()=>{}), 90_000);
+
+  // DPA/PP を 30 秒ごと
+  dpaTimer  = setInterval(() => loadDPA().catch(()=>{}), 30_000);
+
+  // 初回即時ロード
+  loadQT(false).catch(()=>{});
+  loadDPA().catch(()=>{});
 }
 function stopAuto(){ if (autoTimer){ clearInterval(autoTimer); autoTimer=null; } if (dpaTimer){ clearInterval(dpaTimer); dpaTimer=null; } }
 autoRefresh.onchange = ()=> autoRefresh.checked ? startAuto() : stopAuto();
