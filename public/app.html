@@ -688,6 +688,26 @@ async function refreshAuthUI(){
 await refreshAuthUI();
 supabase.auth.onAuthStateChange(()=>refreshAuthUI());
 
+const DEVICE_ID_KEY = 'tdr-device-id';
+function uuidv4(){
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
+  });
+}
+const deviceId = safeStorage.getItem(DEVICE_ID_KEY) || (safeStorage.setItem(DEVICE_ID_KEY, uuidv4()), safeStorage.getItem(DEVICE_ID_KEY));
+
+const LS = {
+  favKey: (park)=> `fav:${park}`,
+  rulesKey: (park)=> `rules:${park}`,
+  readFavs(park){ try{ return new Set(JSON.parse(safeStorage.getItem(this.favKey(park))||'[]')); }catch{ return new Set(); } },
+  writeFavs(park, set){ safeStorage.setItem(this.favKey(park), JSON.stringify([...set])); },
+  readRules(park){
+    try{ return JSON.parse(safeStorage.getItem(this.rulesKey(park))||''); }catch{ return null; }
+  },
+  writeRules(park, obj){ safeStorage.setItem(this.rulesKey(park), JSON.stringify(obj||{})); }
+};
+  
 // Elements
 const parkSel = document.getElementById('park');
 const qtDiv = document.getElementById('qt');
@@ -1136,27 +1156,43 @@ async function loadDPA(){
 async function toggleFav(raw){
   const parkId=parseInt(parkSel.value,10);
   const { data:{user} }=await supabase.auth.getUser();
-  if(!user) return alert('ログインしてください');
-  if(state.favorites.has(raw)){
-    const { error } = await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId, attraction_name:raw });
-    if (error) return alert('保存に失敗しました: '+error.message);
-    state.favorites.delete(raw);
-  } else {
-    const { error } = await supabase.from('user_favorites').upsert({ user_id:user.id, park_id:parkId, attraction_name:raw });
-    if (error) return alert('保存に失敗しました: '+error.message);
-    state.favorites.add(raw);
+
+  // 先にローカルを更新（オフラインでも効く）
+  if(state.favorites.has(raw)) state.favorites.delete(raw); else state.favorites.add(raw);
+  LS.writeFavs(parkId, state.favorites);
+
+  // ログイン中だけサーバにも反映（失敗してもUIは維持）
+  if(user){
+    try{
+      if(state.favorites.has(raw)){
+        const { error } = await supabase.from('user_favorites').upsert({ user_id:user.id, park_id:parkId, attraction_name:raw });
+        if (error) console.warn(error);
+      }else{
+        const { error } = await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId, attraction_name:raw });
+        if (error) console.warn(error);
+      }
+    }catch(e){ console.warn(e); }
   }
+
   renderFavs(); renderQT(); renderCountsEditor(); renderNowTips(); renderFavoritesQuick();
 }
 
 async function loadFavs(){
   const parkId=parseInt(parkSel.value,10);
   const { data:{user} }=await supabase.auth.getUser();
-  state.favorites.clear();
+
+  // まずローカルから
+  const local = LS.readFavs(parkId);
+  state.favorites = new Set(local);
+
+  // ログイン中ならサーバの内容とマージ（サーバ優先）
   if(user){
     const { data } = await supabase.from('user_favorites').select('*').match({ user_id:user.id, park_id:parkId });
     for(const r of (data||[])) state.favorites.add(r.attraction_name);
   }
+
+  // 画面反映 & ローカルへ同期保存（ログイン時もローカルを最新に）
+  LS.writeFavs(parkId, state.favorites);
   renderFavs(); renderCountsEditor(); renderFavoritesQuick();
 }
 
@@ -1204,19 +1240,53 @@ document.getElementById('btnLoadPreset').onclick = async () => {
 };
 
 async function loadRules(){
-  const { data:{user} }=await supabase.auth.getUser(); if(!user){ state.rules=null; return; }
-  const { data } = await supabase.from('user_alert_rules').select('*').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).maybeSingle();
-  const r = data || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
-  rCloseReopen.checked = !!r.notify_close_reopen; rDpaSale.checked = !!r.notify_dpa_sale; rSpike.value = r.spike_threshold; rWindow.value = r.window_minutes;
+  const parkId = parseInt(parkSel.value,10);
+  const { data:{user} }=await supabase.auth.getUser();
+
+  // ローカル優先で読み込み（あればそれをUIに）
+  const local = LS.readRules(parkId);
+  if(local){
+    rCloseReopen.checked = !!local.notify_close_reopen;
+    rDpaSale.checked     = !!local.notify_dpa_sale;
+    rSpike.value         = local.spike_threshold ?? 20;
+    rWindow.value        = local.window_minutes ?? 10;
+    if(!user) return; // 未ログインならここで終わり
+  }
+
+  // ログイン中はサーバから取得してUI更新。ローカルにも反映
+  if(user){
+    const { data } = await supabase.from('user_alert_rules').select('*')
+      .eq('user_id',user.id).eq('park_id',parkId).maybeSingle();
+    const r = data || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
+    rCloseReopen.checked = !!r.notify_close_reopen;
+    rDpaSale.checked     = !!r.notify_dpa_sale;
+    rSpike.value         = r.spike_threshold;
+    rWindow.value        = r.window_minutes;
+    LS.writeRules(parkId, r);
+  }
 }
 
 document.getElementById('btnSaveRules').onclick=async()=>{
+  const parkId = parseInt(parkSel.value,10);
   const { data:{user} }=await supabase.auth.getUser();
-  if(!user) return alert('ログインしてください');
-  const row={ user_id:user.id, park_id:parseInt(parkSel.value,10), notify_close_reopen:rCloseReopen.checked, notify_dpa_sale:rDpaSale.checked, spike_threshold:Number(rSpike.value||20), window_minutes:Number(rWindow.value||10) };
-  await supabase.from('user_alert_rules').upsert(row,{ onConflict:'user_id,park_id' });
+  const row = {
+    notify_close_reopen:rCloseReopen.checked,
+    notify_dpa_sale:rDpaSale.checked,
+    spike_threshold:Number(rSpike.value||20),
+    window_minutes:Number(rWindow.value||10)
+  };
+
+  // 常にローカル保存
+  LS.writeRules(parkId, row);
+
+  // ログイン中のみサーバにも保存
+  if(user){
+    await supabase.from('user_alert_rules').upsert({ user_id:user.id, park_id:parkId, ...row },{ onConflict:'user_id,park_id' });
+  }
+
   alert('保存しました');
 };
+
 
 async function loadPurchases(){
   const { data:{user} }=await supabase.auth.getUser();
@@ -1469,17 +1539,41 @@ const btnNotify=document.getElementById('btnNotify');
 async function urlB64ToUint8Array(b){const p='='.repeat((4-b.length%4)%4);const base=(b+p).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base);const u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u;}
 btnNotify.onclick=async()=>{
   if (!ENV.VAPID_PUBLIC_KEY) return alert('VAPID_PUBLIC_KEY未設定');
+
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
   if (isIOS && !isStandalone) { alert('iPhoneは「ホーム画面に追加」でインストール後に通知が有効化できます。'); return; }
+
   const perm = await Notification.requestPermission();
   if (perm !== 'granted'){ alert('通知が許可されませんでした'); return; }
+
   const reg = await navigator.serviceWorker.register('/sw.js');
-  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY) });
-  const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
-  const { data:{ session } } = await supabase.auth.getSession();
-  const resp=await fetch('/.netlify/functions/push-subscribe',{ method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization': session?.access_token ? 'Bearer ' + session.access_token : '' }, body: JSON.stringify(sub.toJSON()) });
-  alert(resp.ok?'通知を登録しました':'通知登録に失敗しました');
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY)
+  });
+
+  // 端末側の状態スナップショット（サーバが匿名配信するときに使う）
+  const parkId = parseInt(parkSel.value,10);
+  const favs   = [...(LS.readFavs(parkId) || [])];
+  const rules  = LS.readRules(parkId) || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
+
+  const { data:{user}, error } = await supabase.auth.getUser();
+
+  const headers = { 'Content-Type':'application/json' };
+  let body = { device_id: deviceId, subscription: sub.toJSON(), park_id: parkId, favs, rules };
+
+  // ログイン中は従来通りBearer付きでもOK（互換）
+  if (!error && user) {
+    const { data:{ session } } = await supabase.auth.getSession();
+    if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+  }
+
+  const resp = await fetch('/.netlify/functions/push-subscribe', {
+    method:'POST', headers, body: JSON.stringify(body)
+  });
+
+  alert(resp.ok ? '通知を登録しました（端末）' : '通知登録に失敗しました');
 };
 
 // フィルタボタンのトグル表示
