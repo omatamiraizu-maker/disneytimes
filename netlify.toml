@@ -1,15 +1,15 @@
 [build]
   command = ""
-  publish = "public"                  # ← ここ大事
+  publish = "public"
   functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["cheerio","@supabase/supabase-js","web-push"]
+  external_node_modules = ["@supabase/supabase-js","web-push"]
 
-# 毎分：通知だけ Netlify で（ファイル名と一致させる）
+# 毎分：休止/再開 + DPA/PP（統合関数）
 [[scheduled.functions]]
-  name = "notify-dpa-window"
+  name = "notify-all"         # ← ファイル名（拡張子なし）と一致
   schedule = "*/1 * * * *"
 
 [[headers]]
