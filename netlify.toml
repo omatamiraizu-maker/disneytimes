@@ -1,21 +1,16 @@
 [build]
   command = ""
-  publish = "."
+  publish = "public"                  # ← ここ大事
   functions = "netlify/functions"
 
 [functions]
-node_bundler = "esbuild"
-external_node_modules = ["cheerio","@supabase/supabase-js","web-push"]
+  node_bundler = "esbuild"
+  external_node_modules = ["cheerio","@supabase/supabase-js","web-push"]
 
-# 毎分：通知（軽い）
+# 毎分：通知だけ Netlify で（ファイル名と一致させる）
 [[scheduled.functions]]
-name = "notify-dpa-window-background"
-schedule = "*/1 * * * *"
-
-# 1分毎：DPA/PP 取り込み（必要に応じて調整）
-[[scheduled.functions]]
-name = "ingest-tdr-dpa-background"
-schedule = "*/1 * * * *"
+  name = "notify-dpa-window"
+  schedule = "*/1 * * * *"
 
 [[headers]]
   for = "/sw.js"
