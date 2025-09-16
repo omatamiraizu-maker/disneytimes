@@ -638,20 +638,24 @@ async function savePushoverKey() {
     ? { user_id: user.id, user_key: key, label }
     : { device_id: deviceId, user_key: key, label };
 
-  // ★ 衝突キーを明示（userは user_id、匿名は device_id）
-  const onConflict = user ? 'user_id' : 'device_id';
-
-  const { error } = await supabase
-    .from('pushover_profiles')
-    .upsert(row, { onConflict })   // ← ここがポイント
-    .select()
-    .single();
-
-  if (error) { alert('保存に失敗: ' + error.message); return; }
-
+  // まず INSERT
+  let { error } = await supabase.from('pushover_profiles').insert(row);
+  // 一意制約違反(23505)なら UPDATE に切替
+  if (error && /23505/.test(error.code || '') ) {
+    if (user) {
+      ({ error } = await supabase.from('pushover_profiles')
+        .update({ user_key: key, label })
+        .eq('user_id', user.id));
+    } else {
+      ({ error } = await supabase.from('pushover_profiles')
+        .update({ user_key: key, label })
+        .eq('device_id', deviceId));
+    }
+  }
+  if (error) { alert('保存に失敗: ' + (error.message || 'unknown')); return; }
   alert('Pushoverキーを保存しました');
-  if (poLabel) poLabel.value = '';
 }
+
 
 btnSavePushover?.addEventListener('click', savePushoverKey);
 
