@@ -424,6 +424,13 @@ thead th { color:#cbd5e1; font-weight:700; }
       <label class="pill">DPA開始の <input type="number" id="rWindow" value="10" class="w120"> 分前に通知</label>
       <button id="btnSaveRules" class="cta">保存</button>
     </div>
+    <div class="row" style="margin-top:8px">
+      <label class="pill">Pushover User Key</label>
+      <input id="poKey" placeholder="例：uQiRzpo4DXghDmr9QzzfQu27cmVRsG" style="min-width:320px">
+      <input id="poLabel" placeholder="端末名(任意)">
+      <button id="btnSavePushover" class="cta">Pushoverキーを保存</button>
+      <span class="mut">※登録するとネイティブ通知も受け取れます</span>
+    </div>
   </section>
 
   <section class="panel">
@@ -613,8 +620,33 @@ const loginPw   = document.getElementById('loginPw');
 const btnSigninPw = document.getElementById('btnSigninPw');
 const btnSignupPw = document.getElementById('btnSignupPw');
 
+const poKey = document.getElementById('poKey');
+const poLabel = document.getElementById('poLabel');
+const btnSavePushover = document.getElementById('btnSavePushover');
+
 document.getElementById('btnCloseLogin').onclick = () => loginModal.classList.remove('on');
 btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
+
+// Pushover の User Key を保存（ログイン時= user_id / 未ログイン= device_id）
+async function savePushoverKey() {
+  const key = (poKey?.value || '').trim();
+  const label = (poLabel?.value || '').trim();
+  if (!key) { alert('User Key を入力してください'); return; }
+
+  const { data:{ user } } = await supabase.auth.getUser();
+  const row = user
+    ? { user_id: user.id, user_key: key, label }
+    : { device_id: deviceId, user_key: key, label };
+
+  const { error } = await supabase.from('pushover_profiles').upsert(row);
+  if (error) { alert('保存に失敗: ' + error.message); return; }
+
+  alert('Pushoverキーを保存しました');
+  if (poLabel) poLabel.value = '';
+}
+
+btnSavePushover?.addEventListener('click', savePushoverKey);
+
 
 function applyLoginMode(){
   const usePw = modePw?.checked;
