@@ -638,7 +638,15 @@ async function savePushoverKey() {
     ? { user_id: user.id, user_key: key, label }
     : { device_id: deviceId, user_key: key, label };
 
-  const { error } = await supabase.from('pushover_profiles').upsert(row);
+  // ★ 衝突キーを明示（userは user_id、匿名は device_id）
+  const onConflict = user ? 'user_id' : 'device_id';
+
+  const { error } = await supabase
+    .from('pushover_profiles')
+    .upsert(row, { onConflict })   // ← ここがポイント
+    .select()
+    .single();
+
   if (error) { alert('保存に失敗: ' + error.message); return; }
 
   alert('Pushoverキーを保存しました');
