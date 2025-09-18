@@ -63,7 +63,6 @@ export async function handler() {
     };
 
     // 送信済み重複チェック（notified_events を使用）
-    await sb.rpc('noop').catch(()=>{}); // keep-alive
     const ensureDedupTable = `
       create table if not exists public.notified_events(
         id bigserial primary key,
