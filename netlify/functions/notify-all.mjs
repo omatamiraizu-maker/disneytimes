@@ -7,14 +7,14 @@ const {
   SUPABASE_SERVICE_ROLE,
   VAPID_PUBLIC_KEY,
   VAPID_PRIVATE_KEY,
-  PUSHOVER_TOKEN, // Pushover Application Token（Netlifyの環境変数に設定）
+  PUSHOVER_TOKEN, // Pushover Application Token
 } = process.env;
 
 webpush.setVapidDetails('mailto:notify@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-// 直近N分内の同一イベントは重複送信しない
+// 同一イベント重複を抑止する時間窓（分）
 const DEDUP_WINDOW_MIN = 15;
-// DB取り込みのズレを吸収するための検出窓
+// 直近変化を拾うための検出窓（分）
 const CHANGE_WINDOW_MIN = 10;
 
 export async function handler() {
@@ -23,25 +23,21 @@ export async function handler() {
   });
 
   try {
-    // 1) 全購読者を取得（お気に入り・ログイン概念は排除して“全員に配信”）
-    let { data: subsPush, error: e1 } = await sb
+    // ---------- 全購読者（Web Push / Pushover） ----------
+    let { data: subsPush, error: ePush } = await sb
       .from('push_subscriptions')
       .select('endpoint,p256dh,auth');
-
-    if (e1) { console.error('push_subscriptions:', e1.message); subsPush = []; }
+    if (ePush) { console.error('push_subscriptions:', ePush.message); subsPush = []; }
     const allPushSubs = subsPush || [];
 
-    let { data: poProfiles, error: e2 } = await sb
+    let { data: poProfiles, error: ePo } = await sb
       .from('pushover_profiles')
       .select('user_key');
-
-    if (e2) { console.error('pushover_profiles:', e2.message); poProfiles = []; }
+    if (ePo) { console.error('pushover_profiles:', ePo.message); poProfiles = []; }
     const allPoKeys = [...new Set((poProfiles || []).map(p => p.user_key).filter(Boolean))];
 
-    // Web Push 送信
     async function sendWebPush(title, body, url = '/') {
       if (!allPushSubs.length) return;
-      // フィードは失敗しても無視
       await sb.from('notifications').insert({ title, body });
       for (const s of allPushSubs) {
         const sub = { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } };
@@ -57,7 +53,6 @@ export async function handler() {
       }
     }
 
-    // Pushover 送信
     async function sendPushover(title, message, url = '/') {
       if (!PUSHOVER_TOKEN || !allPoKeys.length) return;
       for (const user of allPoKeys) {
@@ -76,16 +71,15 @@ export async function handler() {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body
           });
-        } catch (_) { /* noop */ }
+        } catch (_) {}
       }
     }
 
-    // 重複送信防止（notified_events が既に作成されている前提）
+    // ---------- 重複送信防止（notified_events を使用） ----------
     async function shouldSendOnce(kind, park_id, name_raw, event, changed_atISO) {
       const uniq_key = `${kind}:${park_id}:${name_raw}:${event}:${changed_atISO}`;
       const cutoffISO = new Date(Date.now() - DEDUP_WINDOW_MIN * 60 * 1000).toISOString();
 
-      // 既に近い時間に同一イベントがあればスキップ
       let { data: existed, error: exErr } = await sb
         .from('notified_events')
         .select('uniq_key,changed_at')
@@ -94,28 +88,32 @@ export async function handler() {
         .limit(1);
 
       if (exErr) {
-        // テーブル未作成などの場合は重複チェックせず送る
         console.warn('notified_events check:', exErr.message);
       }
       if (existed && existed.length) return false;
 
-      // 記録（ユニーク制約に引っかかったら重複と判断）
       const ins = await sb.from('notified_events').insert({
         kind, park_id, name_raw, event, changed_at: changed_atISO, uniq_key
       });
-
       if (ins.error && /duplicate key|unique/i.test(ins.error.message)) return false;
       return true;
     }
 
+    // ---------- 日本語→英語キー変換マップ（v_queue_times_latest から作成） ----------
+    let { data: qmap, error: eq } = await sb
+      .from('v_queue_times_latest')
+      .select('park_id,name_raw,name_ja');
+    if (eq) { console.warn('v_queue_times_latest:', eq.message); qmap = []; }
+
+    const ja2raw = new Map();
+    (qmap || []).forEach(r => {
+      ja2raw.set(`${r.park_id}::${r.name_ja}`, r.name_raw);
+    });
+
     // ===================== A) 休止/再開 =====================
     let { data: openChanges, error: eOpen } =
       await sb.rpc('sp_recent_open_changes', { minutes: CHANGE_WINDOW_MIN });
-
-    if (eOpen) {
-      console.warn('sp_recent_open_changes:', eOpen.message);
-      openChanges = [];
-    }
+    if (eOpen) { console.warn('sp_recent_open_changes:', eOpen.message); openChanges = []; }
 
     for (const ch of (openChanges || [])) {
       const was = ch.prev_open ? '運営中' : '休止';
@@ -135,20 +133,18 @@ export async function handler() {
     }
 
     // ===================== B) DPA/PP =====================
-    // 最新スナップショット（英語キーが無い環境でも name_raw を試みる）
+    // 最新スナップショット（name_raw を要求しない）
     let { data: latest, error: eLatest } = await sb
       .from('v_attraction_dpa_latest')
-      .select('park_id,name,name_raw,dpa_status,pp40_status,fetched_at');
-
+      .select('park_id,name,dpa_status,pp40_status,fetched_at');
     if (eLatest) { console.warn('v_attraction_dpa_latest:', eLatest.message); latest = []; }
 
-    // 直近の履歴から直前値を作る（CHANGE_WINDOW_MIN分）
+    // 直近履歴（CHANGE_WINDOW_MIN分）で直前値を作る
     const sinceISO = new Date(Date.now() - CHANGE_WINDOW_MIN * 60 * 1000).toISOString();
     let { data: recentHist, error: eHist } = await sb
       .from('attraction_status')
       .select('park_id,name_raw,dpa_status,pp40_status,fetched_at')
       .gte('fetched_at', sinceISO);
-
     if (eHist) { console.warn('attraction_status recent:', eHist.message); recentHist = []; }
 
     const prevMap = new Map(); // key = park_id::name_raw -> { dpa, pp, ts }
@@ -162,19 +158,23 @@ export async function handler() {
 
     for (const v of (latest || [])) {
       const park_id = v.park_id;
-      // name_raw がビューに無い環境向けのフォールバック（日本語名を便宜キーにする）
-      const name_raw = v.name_raw || v.name;
-      const name_ja  = v.name;
+      const name_ja = v.name;
+
+      // 日本語→英語キー（見つからないものはスキップ）
+      const name_raw = ja2raw.get(`${park_id}::${name_ja}`);
+      if (!name_raw) continue;
+
       const nowD = v.dpa_status || null;
       const nowP = v.pp40_status || null;
-      const key = `${park_id}::${name_raw}`;
 
+      const key = `${park_id}::${name_raw}`;
       const prev = prevMap.get(key) || { dpa: null, pp: null, ts: v.fetched_at };
+
       const changedDpa = (prev.dpa || null) !== (nowD || null);
       const changedPp  = (prev.pp  || null) !== (nowP || null);
       if (!changedDpa && !changedPp) continue;
 
-      // イベント名のラベル（DPA優先）
+      // イベント名（DPA優先）
       let event = 'dpa_update';
       let label = '販売状況が更新';
       if (changedDpa) {
