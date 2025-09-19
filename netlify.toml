@@ -7,15 +7,4 @@
   node_bundler = "esbuild"
   external_node_modules = ["@supabase/supabase-js","web-push"]
 
-# 毎分：休止/再開 + DPA/PP（統合関数）
-[[scheduled.functions]]
-  name = "notify-all"         # ← ファイル名（拡張子なし）と一致
-  schedule = "*/1 * * * *"
-
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "no-cache"
-
-
 
