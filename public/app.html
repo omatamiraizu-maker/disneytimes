@@ -336,6 +336,10 @@ thead th { color:#cbd5e1; font-weight:700; }
   .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
   .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグしやすく */
 }
+/* モバイル(PWA)は上タブを隠し、下のボトムナビだけにする */
+@media (max-width: 720px){
+  .tabs{ display: none !important; }
+}
 </style>
 </head>
 <body>
