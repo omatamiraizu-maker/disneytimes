@@ -299,6 +299,43 @@ thead th { color:#cbd5e1; font-weight:700; }
 .timeline .on  { background:#164e63; color:#a7f3d0; font-weight:700; }
 .timeline .off { background:#0b1220; color:#64748b; }
 .timeline .head { position:sticky; top:0; background:#0b1220; z-index:2; }
+/* タイムライン横スクロール用ラッパ */
+.timeline-wrap{
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; /* iOSなめらか */
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+/* テーブルを“必要なだけ横に広げる” */
+.timeline{
+  width: max-content;  /* 列数に応じて横方向へ拡張 */
+  table-layout: fixed; /* セル折り返しを抑える */
+  white-space: nowrap;
+}
+
+/* 先頭列（時刻）を固定して見やすく */
+.timeline th:first-child,
+.timeline td:first-child{
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #0b1220;
+}
+
+/* 列幅をコンパクトに */
+.timeline th, .timeline td{
+  min-width: 80px;         /* 列幅（必要なら調整） */
+  padding: 6px 8px;
+  text-align: center;
+}
+
+/* モバイル時はさらに詰める＆スクロールバー見やすく */
+@media (max-width: 720px){
+  .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
+  .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグしやすく */
+}
 </style>
 </head>
 <body>
@@ -431,7 +468,9 @@ thead th { color:#cbd5e1; font-weight:700; }
     </label>
     <span id="tlUpdated" class="tag"></span>
     </div>
-    <div id="timeline"></div>
+    <div class="timeline-wrap" id="timelineWrap">
+      <div id="timeline"></div>
+    </div>
   </section>
   <section class="panel">
     <h3 style="margin-top:0">🔔 通知ルール</h3>
@@ -1972,8 +2011,10 @@ function renderTimeline(rows){
   }
   tbl.appendChild(tbody);
 
+  const tlWrap = document.getElementById('timelineWrap') || tlDiv; // ラッパが無ければ従来通り
   tlDiv.innerHTML = '';
-  tlDiv.appendChild(tbl);
+  tlWrap.innerHTML = '';            // ← ラッパ内をクリア
+  tlWrap.appendChild(tbl);          // ← ラッパにテーブルを入れる
   tlUpdated.textContent = '更新: ' + new Date().toLocaleTimeString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false });
 }
 
@@ -1987,7 +2028,27 @@ function startTimelineAuto(){
   loadTimeline().catch(()=>{});
   tlTimer = setInterval(()=> loadTimeline().catch(()=>{}), 60_000);
 }
-  
+
+// マウスドラッグで横スクロール（任意）
+(function enableDragScroll(){
+  const wrap = document.getElementById('timelineWrap');
+  if (!wrap) return;
+  let isDown=false, startX=0, scrollLeft=0;
+  wrap.addEventListener('mousedown', (e)=>{
+    isDown=true; wrap.classList.add('dragging');
+    startX = e.pageX - wrap.offsetLeft;
+    scrollLeft = wrap.scrollLeft;
+  });
+  ['mouseleave','mouseup'].forEach(ev=>wrap.addEventListener(ev,()=>{ isDown=false; wrap.classList.remove('dragging'); }));
+  wrap.addEventListener('mousemove', (e)=>{
+    if(!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - wrap.offsetLeft;
+    const walk = (x - startX) * 1; // 速度係数
+    wrap.scrollLeft = scrollLeft - walk;
+  });
+})();
+
 // 初期読み込み
 await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas(); startTimelineAuto();
 </script>
