@@ -293,6 +293,12 @@ thead th { color:#cbd5e1; font-weight:700; }
 
 /* セクション間の余白 微調整 */
 .panel h3 { display:flex; align-items:center; gap:8px; }
+/* タイムライン表 */
+.timeline { border-collapse: collapse; width:100%; font-size: 12px; }
+.timeline th, .timeline td { border:1px solid #273244; padding:4px 6px; text-align:center; }
+.timeline .on  { background:#164e63; color:#a7f3d0; font-weight:700; }
+.timeline .off { background:#0b1220; color:#64748b; }
+.timeline .head { position:sticky; top:0; background:#0b1220; z-index:2; }
 </style>
 </head>
 <body>
@@ -414,7 +420,19 @@ thead th { color:#cbd5e1; font-weight:700; }
       <div id="dpa"></div>
     </div>
   </section>
-
+  <section class="panel" id="timelinePanel">
+  <h3 style="margin-top:0">📊 今日の販売タイムライン（8:00–21:00 / 15分刻み）</h3>
+  <div class="row" style="gap:8px;align-items:center">
+    <label class="pill">対象
+      <select id="tlKind">
+        <option value="dpa">DPA（販売中）</option>
+        <option value="pp">PP（発行中）</option>
+      </select>
+    </label>
+    <span id="tlUpdated" class="tag"></span>
+    </div>
+    <div id="timeline"></div>
+  </section>
   <section class="panel">
     <h3 style="margin-top:0">🔔 通知ルール</h3>
     <div class="row">
@@ -1881,8 +1899,97 @@ if (btnFetchDpa) {
   };
 }
 
+// ===== 今日の販売タイムライン（8:00–21:00 / 15分刻み） =====
+
+// DOM 参照（既に存在する要素）
+const tlDiv      = document.getElementById('timeline');
+const tlKindSel  = document.getElementById('tlKind');
+const tlUpdated  = document.getElementById('tlUpdated');
+
+// 8:00〜21:00 の 15分スロットを JST で生成
+function* tlSlots(startHour=8, endHour=21, step=15){
+  const tz = 'Asia/Tokyo';
+  const base = new Date();
+  const s = new Date(base.toLocaleString('en-US',{ timeZone: tz }));
+  s.setHours(startHour,0,0,0);
+  const e = new Date(base.toLocaleString('en-US',{ timeZone: tz }));
+  e.setHours(endHour,0,0,0);
+  for (let t=new Date(s); t<e; t=new Date(t.getTime()+step*60000)) {
+    yield [new Date(t), new Date(t.getTime()+step*60000)];
+  }
+}
+const overlap = (a1,a2,b1,b2)=> a1<b2 && b1<a2;
+
+// Supabase（マテビュー）から区間を取得して表に描画
+async function loadTimeline(){
+  const kind   = tlKindSel?.value || 'dpa';
+  const table  = (kind === 'dpa') ? 'v_dpa_sessions_today_mv' : 'v_pp_sessions_today_mv';
+
+  // ← ここだけ追加：274/275(ランド/シー) → 1/2 に合わせる
+  const qtParkId = parseInt(parkSel.value || '274', 10);
+  const sessionParkId = (qtParkId === 274 ? 1 : qtParkId === 275 ? 2 : qtParkId);
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('park_id,name_ja,jst_start,jst_end')
+    .eq('park_id', sessionParkId)     // ← ここを sessionParkId に
+    .order('name_ja', { ascending:true })
+    .order('jst_start', { ascending:true });
+
+  if (error) { tlDiv.textContent = error.message; return; }
+  renderTimeline(data || []);
+}
+
+function renderTimeline(rows){
+  const names  = [...new Set(rows.map(r=>r.name_ja))];
+  const byName = Object.fromEntries(names.map(n => [n, rows.filter(r=>r.name_ja===n)]));
+
+  const tbl = document.createElement('table'); tbl.className='timeline';
+
+  // ヘッダ
+  const thead = document.createElement('thead');
+  const thr   = document.createElement('tr'); thr.className='head';
+  thr.appendChild(Object.assign(document.createElement('th'), {textContent:'時刻'}));
+  for (const n of names) thr.appendChild(Object.assign(document.createElement('th'), {textContent:n}));
+  thead.appendChild(thr); tbl.appendChild(thead);
+
+  // 本体（8:00〜21:00 / 15分）
+  const tbody = document.createElement('tbody');
+  for (const [slotS, slotE] of tlSlots(8,21,15)) {
+    const tr    = document.createElement('tr');
+    const tdT   = document.createElement('td');
+    tdT.textContent = slotS.toLocaleTimeString('ja-JP',{ timeZone:'Asia/Tokyo', hour:'2-digit', minute:'2-digit', hour12:false });
+    tr.appendChild(tdT);
+
+    for (const n of names) {
+      const td  = document.createElement('td');
+      const on  = (byName[n]||[]).some(s => overlap(new Date(s.jst_start), new Date(s.jst_end), slotS, slotE));
+      td.className  = on ? 'on' : 'off';
+      td.textContent= on ? '●' : '';
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);
+
+  tlDiv.innerHTML = '';
+  tlDiv.appendChild(tbl);
+  tlUpdated.textContent = '更新: ' + new Date().toLocaleTimeString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false });
+}
+
+// イベント & 自動更新（1分ごと）
+tlKindSel?.addEventListener('change', loadTimeline);
+parkSel?.addEventListener('change', loadTimeline);
+
+let tlTimer = null;
+function startTimelineAuto(){
+  if (tlTimer) clearInterval(tlTimer);
+  loadTimeline().catch(()=>{});
+  tlTimer = setInterval(()=> loadTimeline().catch(()=>{}), 60_000);
+}
+  
 // 初期読み込み
-await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas();
+await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas(); startTimelineAuto();
 </script>
 </body>
 </html>
