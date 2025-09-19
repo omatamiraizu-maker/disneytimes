@@ -248,98 +248,184 @@
   .pull-text { margin-left: 12px; color: var(--mute); }
   /* ==== UI: 一貫化テーマ & タブ/強調色 強化 ==== */
 
-/* 統一トーン（既存カラー変えずにアクセントだけ調整） */
-.badge { border:1px solid var(--line); border-radius:10px; padding:2px 8px; font-size:12px; }
-.badge.on   { color: var(--good);  border-color:#14532d; background: rgba(34,197,94,.10); }
-.badge.off  { color: #9ca3af;     border-color:#374151; background: rgba(156,163,175,.10); }
-.badge.warn { color: var(--warn);  border-color:#713f12; background: rgba(251,191,36,.10); }
+  /* 統一トーン（既存カラー変えずにアクセントだけ調整） */
+  .badge { border:1px solid var(--line); border-radius:10px; padding:2px 8px; font-size:12px; }
+  .badge.on   { color: var(--good);  border-color:#14532d; background: rgba(34,197,94,.10); }
+  .badge.off  { color: #9ca3af;     border-color:#374151; background: rgba(156,163,175,.10); }
+  .badge.warn { color: var(--warn);  border-color:#713f12; background: rgba(251,191,36,.10); }
+  
+  .status-chip { font-weight:700; padding:2px 8px; border-radius:8px; }
+  .status-open   { color: var(--good);  background: rgba(34,197,94,.15); }
+  .status-closed { color: var(--bad);   background: rgba(239,68,68,.15); }
+  
+  /* DPA/PP 統一表示 */
+  .dpa-on  { color: var(--good);  border-color:#14532d; }
+  .dpa-end { color: #9ca3af;      border-color:#374151; }
+  .pp-on   { color: #a78bfa;      border-color:#4c1d95; } /* PPは紫系で統一 */
+  
+  /* 見出し下にタブ（PC向け） */
+  .tabs {
+    display:flex; gap:8px; padding:8px 0; position:sticky; top:52px; z-index:9;
+    background:#0b1220; border-bottom:1px solid var(--line);
+  }
+  .tab-btn {
+    border:1px solid var(--line); border-radius:999px; padding:8px 14px; cursor:pointer;
+    background:var(--panel); color:var(--ink); font-weight:600; transition:.2s;
+  }
+  .tab-btn.active { background: var(--accent); color:#000; border-color:var(--accent); }
+  
+  /* 下部ナビのアクティブ強調（モバイル） */
+  .bottom-nav .nav-item.active { background: var(--panel); border:1px solid var(--accent); }
+  
+  /* カード影・角丸をやや強調 */
+  .panel, .qt-card, .dpa-card, .card {
+    box-shadow: 0 6px 16px rgba(0,0,0,.25);
+    border-radius:16px;
+  }
+  
+  /* テーブルのヘッダ強調 */
+  thead th { color:#cbd5e1; font-weight:700; }
+  
+  /* 便利トグル（チップ風） */
+  .pill.toggle { cursor:pointer; user-select:none; }
+  .pill.toggle input[type="checkbox"]{ display:none; }
+  .pill.toggle.active{ border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  
+  /* セクション間の余白 微調整 */
+  .panel h3 { display:flex; align-items:center; gap:8px; }
+  /* タイムライン表 */
+  .timeline { border-collapse: collapse; width:100%; font-size: 12px; }
+  .timeline th, .timeline td { border:1px solid #273244; padding:4px 6px; text-align:center; }
+  .timeline .on  { background:#164e63; color:#a7f3d0; font-weight:700; }
+  .timeline .off { background:#0b1220; color:#64748b; }
+  .timeline .head { position:sticky; top:0; background:#0b1220; z-index:2; }
+  /* タイムライン横スクロール用ラッパ */
+  .timeline-wrap{
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; /* iOSなめらか */
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  
+  /* テーブルを“必要なだけ横に広げる” */
+  .timeline{
+    width: max-content;  /* 列数に応じて横方向へ拡張 */
+    table-layout: fixed; /* セル折り返しを抑える */
+    white-space: nowrap;
+  }
+  
+  /* 先頭列（時刻）を固定して見やすく */
+  .timeline th:first-child,
+  .timeline td:first-child{
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #0b1220;
+  }
+  
+  /* 列幅をコンパクトに */
+  .timeline th, .timeline td{
+    min-width: 80px;         /* 列幅（必要なら調整） */
+    padding: 6px 8px;
+    text-align: center;
+  }
+  
+  /* モバイル時はさらに詰める＆スクロールバー見やすく */
+  @media (max-width: 720px){
+    .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
+    .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグしやすく */
+  }
+  /* モバイル(PWA)は上タブを隠し、下のボトムナビだけにする */
+  @media (max-width: 720px){
+    .tabs{ display: none !important; }
+  }
+  /* ページ全体は横幅固定（表のはみ出しで画面幅が広がらないように） */
+  html, body { max-width: 100%; overflow-x: hidden; }
+  
+  /* タイムライン横スクロール用ラッパ（ここが“横スクロール領域”） */
+  .timeline-wrap{
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; /* iOSなめらか */
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  
+  /* テーブル自体は“必要なだけ横に広がる”。列が少ない時は100%を維持 */
+  .timeline{
+    width: max-content;     /* 列数に応じて横へ拡張 */
+    min-width: 100%;        /* 少ない時はコンテナいっぱい */
+    table-layout: fixed;    /* 折返し抑制＋高速描画 */
+    white-space: nowrap;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  
+  /* 先頭の「時刻」列は固定。leftの代わりに論理プロパティで描画崩れ回避 */
+  .timeline th:first-child,
+  .timeline td:first-child{
+    position: sticky;
+    inset-inline-start: 0;  /* left:0 相当（RTLでも安全） */
+    background: #0b1220;
+    z-index: 1;
+  }
+  
+  /* 列幅をコンパクトに（必要に応じて数値調整） */
+  .timeline th, .timeline td{
+    min-width: 80px;
+    padding: 6px 8px;
+    text-align: center;
+  }
+  
+  /* モバイル最適化：さらに詰める＆ドラッグしやすい余白 */
+  @media (max-width: 720px){
+    .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
+    .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグOK */
+  }
+  /* 汎用：横スクロールする箱（中身だけ横に流れる） */
+  .hscroll{
+    width:100%;
+    max-width:100vw;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  
+  /* 汎用：箱の中の横に広がる表 */
+  .hscroll-table{
+    width:max-content;      /* 列が多いほど横へ拡張 */
+    min-width:100%;         /* 列が少ない時は箱いっぱい */
+    table-layout:fixed;
+    white-space:nowrap;
+    border-collapse:separate;
+    border-spacing:0;
+  }
+  
+  /* 先頭列を固定したい表に付与（sticky-first） */
+  .sticky-first th:first-child,
+  .sticky-first td:first-child{
+    position:sticky;
+    inset-inline-start:0;   /* left:0 相当 */
+    background:#0b1220;
+    z-index:1;
+  }
+  
+  /* ページ幅は固定（表のはみ出しで画面幅を広げない） */
+  html,body{ max-width:100%; overflow-x:hidden; }
+  
+  @media (max-width:720px){
+    .hscroll{ margin:0 -8px; padding:0 8px; } /* 端までドラッグしやすく */
+    .hscroll-table th,.hscroll-table td{ min-width:72px; padding:6px 6px; font-size:12px; }
+  }
 
-.status-chip { font-weight:700; padding:2px 8px; border-radius:8px; }
-.status-open   { color: var(--good);  background: rgba(34,197,94,.15); }
-.status-closed { color: var(--bad);   background: rgba(239,68,68,.15); }
+  /* 重要：モバイルでも hscroll-table はテーブル挙動のまま */
+  .hscroll-table{ display: table !important; }
 
-/* DPA/PP 統一表示 */
-.dpa-on  { color: var(--good);  border-color:#14532d; }
-.dpa-end { color: #9ca3af;      border-color:#374151; }
-.pp-on   { color: #a78bfa;      border-color:#4c1d95; } /* PPは紫系で統一 */
-
-/* 見出し下にタブ（PC向け） */
-.tabs {
-  display:flex; gap:8px; padding:8px 0; position:sticky; top:52px; z-index:9;
-  background:#0b1220; border-bottom:1px solid var(--line);
-}
-.tab-btn {
-  border:1px solid var(--line); border-radius:999px; padding:8px 14px; cursor:pointer;
-  background:var(--panel); color:var(--ink); font-weight:600; transition:.2s;
-}
-.tab-btn.active { background: var(--accent); color:#000; border-color:var(--accent); }
-
-/* 下部ナビのアクティブ強調（モバイル） */
-.bottom-nav .nav-item.active { background: var(--panel); border:1px solid var(--accent); }
-
-/* カード影・角丸をやや強調 */
-.panel, .qt-card, .dpa-card, .card {
-  box-shadow: 0 6px 16px rgba(0,0,0,.25);
-  border-radius:16px;
-}
-
-/* テーブルのヘッダ強調 */
-thead th { color:#cbd5e1; font-weight:700; }
-
-/* 便利トグル（チップ風） */
-.pill.toggle { cursor:pointer; user-select:none; }
-.pill.toggle input[type="checkbox"]{ display:none; }
-.pill.toggle.active{ border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-
-/* セクション間の余白 微調整 */
-.panel h3 { display:flex; align-items:center; gap:8px; }
-/* タイムライン表 */
-.timeline { border-collapse: collapse; width:100%; font-size: 12px; }
-.timeline th, .timeline td { border:1px solid #273244; padding:4px 6px; text-align:center; }
-.timeline .on  { background:#164e63; color:#a7f3d0; font-weight:700; }
-.timeline .off { background:#0b1220; color:#64748b; }
-.timeline .head { position:sticky; top:0; background:#0b1220; z-index:2; }
-/* タイムライン横スクロール用ラッパ */
-.timeline-wrap{
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch; /* iOSなめらか */
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-
-/* テーブルを“必要なだけ横に広げる” */
-.timeline{
-  width: max-content;  /* 列数に応じて横方向へ拡張 */
-  table-layout: fixed; /* セル折り返しを抑える */
-  white-space: nowrap;
-}
-
-/* 先頭列（時刻）を固定して見やすく */
-.timeline th:first-child,
-.timeline td:first-child{
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: #0b1220;
-}
-
-/* 列幅をコンパクトに */
-.timeline th, .timeline td{
-  min-width: 80px;         /* 列幅（必要なら調整） */
-  padding: 6px 8px;
-  text-align: center;
-}
-
-/* モバイル時はさらに詰める＆スクロールバー見やすく */
-@media (max-width: 720px){
-  .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
-  .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグしやすく */
-}
-/* モバイル(PWA)は上タブを隠し、下のボトムナビだけにする */
-@media (max-width: 720px){
-  .tabs{ display: none !important; }
-}
 </style>
 </head>
 <body>
@@ -1048,7 +1134,7 @@ function applyFilters(list){
 
 function renderQT(){
   const rows = applyFilters(state.qt);
-  const tbl = el('table',{},[
+  const tbl = el('table',{'data-hscroll':'1','data-sticky-first':'1'},[
     el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設（日本語）'),el('th',{},'待ち'),el('th',{},'状態'),el('th',{},'予測（±30分/同曜日）')])),
     el('tbody',{}, rows.map(r=>{
       const fav=state.favorites.has(r.nameRaw);
@@ -1085,7 +1171,9 @@ function renderQT(){
 
   qtDiv.innerHTML='';
   qtDiv.appendChild(tbl);
+  enableHScroll(qtDiv);
   qtDiv.appendChild(cards);
+  
 }
 
 function fillDpaNameList(){
@@ -1221,7 +1309,7 @@ async function loadDPA(){
   const clsPp  = s => s==='発行中' ? 'good' : (s==='発行終了' ? 'bad' : (s==='対象' ? 'warn' : ''));
 
   // テーブル（PC向け）
-  const tbl=el('table',{},[
+  const tbl = el('table',{'data-hscroll':'1','data-sticky-first':'1'},[
     el('thead',{},el('tr',{},[
       el('th',{},'施設'), el('th',{},'DPA'), el('th',{},'PP'), el('th',{},'更新')
     ])),
@@ -1251,7 +1339,8 @@ async function loadDPA(){
   dpaDiv.innerHTML='';
   dpaDiv.appendChild(tbl);
   dpaDiv.appendChild(cardsWrap);
-
+  enableHScroll(dpaDiv);
+  
   // 更新ラベル
   const latestDpaTs = latest.length ? latest.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.t)? mx : r.t), latest[0].t) : null;
   setUpdated(document.getElementById('dpaUpdated'), latestDpaTs, 10);
@@ -1418,7 +1507,7 @@ function renderPurchases(){
 
   const rows = (state.purchases || []);
 
-  const tbl = el('table', {}, [
+  const tbl = el('table', {'data-hscroll':'1','data-sticky-first':'1'}, [
     el('thead', {}, el('tr', {}, [
       el('th', {}, '施設'),
       el('th', {}, '時間帯'),
@@ -1447,6 +1536,7 @@ function renderPurchases(){
   ]);
 
   box.appendChild(tbl);
+  enableHScroll(box);
 }
 
 
@@ -1515,17 +1605,30 @@ async function showAutoScheduleLinkForToday(){
 
 function renderEvents(){
   const wrap=eventsList; wrap.innerHTML='';
-  const sec = (title, arr, deletable) => el('div',{},[
-    el('h4',{},title),
-    !arr.length ? el('div',{class:'mut'},'なし') :
-    el('table',{},[
-      el('thead',{}, el('tr',{},[el('th',{},'種別'),el('th',{},'名称'),el('th',{},'開始'),el('th',{},'所要'),el('th',{},'操作')])),
+  const sec = (title, arr, deletable) => {
+    const container = el('div',{});          // ← ラップ用に一度変数へ
+    container.appendChild(el('h4',{},title));
+  
+    if (!arr.length) {
+      container.appendChild(el('div',{class:'mut'},'なし'));
+      return container;
+    }
+  
+    const tbl = el('table', {'data-hscroll':'1','data-sticky-first':'1'}, [
+      el('thead',{}, el('tr',{},[ el('th',{},'種別'), el('th',{},'名称'), el('th',{},'開始'),
+                                  el('th',{},'所要'), el('th',{},'操作') ])),
       el('tbody',{}, arr.slice().sort((a,b)=>a.start-b.start).map((e,i)=> el('tr',{},[
-        el('td',{}, e.method), el('td',{}, e.name), el('td',{}, e.start.toLocaleString()), el('td',{}, e.dur + '分'),
-        el('td',{}, deletable ? el('button',{onclick:()=>{ arr.splice(i,1); renderEvents(); }},'削除') : el('span',{class:'mut'},'—'))
+        el('td',{}, e.method), el('td',{}, e.name),
+        el('td',{}, e.start.toLocaleString()), el('td',{}, e.dur + '分'),
+        el('td',{}, deletable ? el('button',{onclick:()=>{ arr.splice(i,1); renderEvents(); }},'削除')
+                               : el('span',{class:'mut'},'—'))
       ])))
-    ])
-  ]);
+    ]);
+  
+    container.appendChild(tbl);
+    enableHScroll(container);                // ← 横スクロールを適用
+    return container;
+  };
   wrap.appendChild(sec('DPA購入（自動反映）', state.fixedAuto, false));
   wrap.appendChild(sec('固定イベント（手動）', state.fixedManual, true));
 }
@@ -2052,6 +2155,18 @@ function startTimelineAuto(){
     wrap.scrollLeft = scrollLeft - walk;
   });
 })();
+// 任意の table[data-hscroll] を自動で <div class="hscroll"> で包み、横スクロール化
+function enableHScroll(root = document){
+  root.querySelectorAll('table[data-hscroll]').forEach(tbl => {
+    if (tbl.closest('.hscroll')) return;           // 既に包まれていれば何もしない
+    const wrap = document.createElement('div');
+    wrap.className = 'hscroll';
+    tbl.parentNode.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
+    tbl.classList.add('hscroll-table');
+    if (tbl.dataset.stickyFirst === '1') tbl.classList.add('sticky-first');
+  });
+}
 
 // 初期読み込み
 await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas(); startTimelineAuto();
