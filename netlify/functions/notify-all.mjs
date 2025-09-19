@@ -2,28 +2,32 @@
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
 
+// ==== 環境変数 ====
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE,
   VAPID_PUBLIC_KEY,
   VAPID_PRIVATE_KEY,
-  PUSHOVER_TOKEN, // Pushover Application Token
+  PUSHOVER_TOKEN,
 } = process.env;
 
+// ==== WebPush 初期化 ====
 webpush.setVapidDetails('mailto:notify@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-// 同一イベント重複を抑止する時間窓（分）
-const DEDUP_WINDOW_MIN = 15;
-// 直近変化を拾うための検出窓（分）
-const CHANGE_WINDOW_MIN = 10;
+// ==== 再通知抑制設定 ====
+const SAME_STATE_WINDOW_MIN = 60;  // 同じ状態なら60分は再通知しない
+const CHANGE_WINDOW_MIN = 10;      // 直近変化を検出する時間窓（分）
 
+// ===========================
+// メイン処理
+// ===========================
 export async function handler() {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
     auth: { persistSession: false }
   });
 
   try {
-    // ---------- 全購読者（Web Push / Pushover） ----------
+    // ---------- 全購読者取得 ----------
     let { data: subsPush, error: ePush } = await sb
       .from('push_subscriptions')
       .select('endpoint,p256dh,auth');
@@ -36,6 +40,7 @@ export async function handler() {
     if (ePo) { console.error('pushover_profiles:', ePo.message); poProfiles = []; }
     const allPoKeys = [...new Set((poProfiles || []).map(p => p.user_key).filter(Boolean))];
 
+    // ---------- 通知送信関数 ----------
     async function sendWebPush(title, body, url = '/') {
       if (!allPushSubs.length) return;
       await sb.from('notifications').insert({ title, body });
@@ -75,31 +80,32 @@ export async function handler() {
       }
     }
 
-    // ---------- 重複送信防止（notified_events を使用） ----------
-    async function shouldSendOnce(kind, park_id, name_raw, event, changed_atISO) {
-      const uniq_key = `${kind}:${park_id}:${name_raw}:${event}:${changed_atISO}`;
-      const cutoffISO = new Date(Date.now() - DEDUP_WINDOW_MIN * 60 * 1000).toISOString();
-
-      let { data: existed, error: exErr } = await sb
+    // ---------- 重複判定 ----------
+    async function shouldSendNotification(kind, park_id, name_raw, event) {
+      const cutoffTime = new Date(Date.now() - SAME_STATE_WINDOW_MIN * 60 * 1000).toISOString();
+      const { data: recent, error } = await sb
         .from('notified_events')
-        .select('uniq_key,changed_at')
-        .eq('uniq_key', uniq_key)
-        .gte('changed_at', cutoffISO)
+        .select('id, event, sent_at')
+        .eq('kind', kind)
+        .eq('park_id', park_id)
+        .eq('name_raw', name_raw)
+        .eq('event', event)
+        .gte('sent_at', cutoffTime)
+        .order('sent_at', { ascending: false })
         .limit(1);
 
-      if (exErr) {
-        console.warn('notified_events check:', exErr.message);
+      if (error) {
+        console.warn('重複チェックエラー:', error.message);
+        return true; // エラー時は通知を送る
       }
-      if (existed && existed.length) return false;
-
-      const ins = await sb.from('notified_events').insert({
-        kind, park_id, name_raw, event, changed_at: changed_atISO, uniq_key
-      });
-      if (ins.error && /duplicate key|unique/i.test(ins.error.message)) return false;
+      if (recent && recent.length > 0) {
+        console.log(`通知スキップ: ${name_raw} - ${event}`);
+        return false;
+      }
       return true;
     }
 
-    // ---------- 日本語→英語キー変換マップ（v_queue_times_latest から作成） ----------
+    // ---------- 日本語→英語キー変換 ----------
     let { data: qmap, error: eq } = await sb
       .from('v_queue_times_latest')
       .select('park_id,name_raw,name_ja');
@@ -115,89 +121,126 @@ export async function handler() {
       await sb.rpc('sp_recent_open_changes', { minutes: CHANGE_WINDOW_MIN });
     if (eOpen) { console.warn('sp_recent_open_changes:', eOpen.message); openChanges = []; }
 
+    let openNotificationCount = 0;
+
     for (const ch of (openChanges || [])) {
       const was = ch.prev_open ? '運営中' : '休止';
       const now = ch.curr_open ? '運営中' : '休止';
       if (was === now) continue;
-
       const event = ch.curr_open ? 'reopen' : 'close';
-      const changedAt = new Date(ch.changed_at).toISOString();
 
-      const ok = await shouldSendOnce('open', ch.park_id, ch.name_raw, event, changedAt);
-      if (!ok) continue;
+      const shouldSend = await shouldSendNotification('open', ch.park_id, ch.name_raw, event);
+      if (shouldSend) {
+        const title = `${ch.name_ja} が${ch.curr_open ? '再開' : '休止'}`;
+        const body  = `状態: ${was} → ${now}`;
 
-      const title = `${ch.name_ja} が${ch.curr_open ? '再開' : '休止'}`;
-      const body  = `状態: ${was} → ${now}`;
-      await sendWebPush(title, body, '/');
-      await sendPushover(title, body, '/');
+        await sendWebPush(title, body, '/');
+        await sendPushover(title, body, '/');
+
+        await sb.from('notified_events').insert({
+          kind: 'open',
+          park_id: ch.park_id,
+          name_raw: ch.name_raw,
+          event,
+          changed_at: ch.changed_at,
+          sent_at: new Date().toISOString(),
+        });
+
+        openNotificationCount++;
+        console.log(`通知送信: ${title}`);
+      }
     }
 
     // ===================== B) DPA/PP =====================
-    // 最新スナップショット（name_raw を要求しない）
     let { data: latest, error: eLatest } = await sb
       .from('v_attraction_dpa_latest')
       .select('park_id,name,dpa_status,pp40_status,fetched_at');
     if (eLatest) { console.warn('v_attraction_dpa_latest:', eLatest.message); latest = []; }
 
-    // 直近履歴（CHANGE_WINDOW_MIN分）で直前値を作る
     const sinceISO = new Date(Date.now() - CHANGE_WINDOW_MIN * 60 * 1000).toISOString();
     let { data: recentHist, error: eHist } = await sb
       .from('attraction_status')
       .select('park_id,name_raw,dpa_status,pp40_status,fetched_at')
-      .gte('fetched_at', sinceISO);
+      .gte('fetched_at', sinceISO)
+      .order('fetched_at', { ascending: false });
     if (eHist) { console.warn('attraction_status recent:', eHist.message); recentHist = []; }
 
-    const prevMap = new Map(); // key = park_id::name_raw -> { dpa, pp, ts }
+    const prevMap = new Map();
     for (const r of (recentHist || [])) {
       const key = `${r.park_id}::${r.name_raw}`;
-      const cur = prevMap.get(key);
-      if (!cur || new Date(r.fetched_at) > new Date(cur.ts)) {
+      if (!prevMap.has(key)) {
         prevMap.set(key, { dpa: r.dpa_status || null, pp: r.pp40_status || null, ts: r.fetched_at });
       }
     }
 
+    let dpaNotificationCount = 0;
+
     for (const v of (latest || [])) {
       const park_id = v.park_id;
       const name_ja = v.name;
-
-      // 日本語→英語キー（見つからないものはスキップ）
       const name_raw = ja2raw.get(`${park_id}::${name_ja}`);
       if (!name_raw) continue;
 
       const nowD = v.dpa_status || null;
       const nowP = v.pp40_status || null;
-
       const key = `${park_id}::${name_raw}`;
       const prev = prevMap.get(key) || { dpa: null, pp: null, ts: v.fetched_at };
 
-      const changedDpa = (prev.dpa || null) !== (nowD || null);
-      const changedPp  = (prev.pp  || null) !== (nowP || null);
-      if (!changedDpa && !changedPp) continue;
-
-      // イベント名（DPA優先）
-      let event = 'dpa_update';
-      let label = '販売状況が更新';
-      if (changedDpa) {
-        if (nowD === '販売中' && prev.dpa !== '販売中') { event = 'dpa_start'; label = 'DPA販売開始'; }
-        else if (prev.dpa === '販売中' && nowD !== '販売中') { event = 'dpa_end'; label = 'DPA販売終了'; }
-      } else if (changedPp) {
-        if (nowP === '発行中' && prev.pp !== '発行中') { event = 'pp_start'; label = 'PP発行開始'; }
-        else if (prev.pp === '発行中' && nowP !== '発行中') { event = 'pp_end'; label = 'PP発行終了'; }
+      const notifications = [];
+      if (prev.dpa !== '販売中' && nowD === '販売中') {
+        notifications.push({ event: 'dpa_start', label: 'DPA販売開始' });
+      } else if (prev.dpa === '販売中' && nowD !== '販売中') {
+        notifications.push({ event: 'dpa_end', label: 'DPA販売終了' });
+      }
+      if (prev.pp !== '発行中' && nowP === '発行中') {
+        notifications.push({ event: 'pp_start', label: 'PP発行開始' });
+      } else if (prev.pp === '発行中' && nowP !== '発行中') {
+        notifications.push({ event: 'pp_end', label: 'PP発行終了' });
       }
 
-      const changedAt = new Date(v.fetched_at || Date.now()).toISOString();
-      const ok = await shouldSendOnce('dpa', park_id, name_raw, event, changedAt);
-      if (!ok) continue;
+      for (const notif of notifications) {
+        const shouldSend = await shouldSendNotification('dpa', park_id, name_raw, notif.event);
+        if (shouldSend) {
+          const title = `${name_ja}：${notif.label}`;
+          const body  = `DPA: ${prev.dpa || '-'} → ${nowD || '-'} / PP: ${prev.pp || '-'} → ${nowP || '-'}`;
 
-      const title = `${name_ja}：${label}`;
-      const body  = `DPA: ${prev.dpa ?? '-'} → ${nowD ?? '-'} / PP: ${prev.pp ?? '-'} → ${nowP ?? '-'}`;
-      await sendWebPush(title, body, '/');
-      await sendPushover(title, body, '/');
+          await sendWebPush(title, body, '/');
+          await sendPushover(title, body, '/');
+
+          await sb.from('notified_events').insert({
+            kind: 'dpa',
+            park_id,
+            name_raw,
+            event: notif.event,
+            changed_at: v.fetched_at,
+            sent_at: new Date().toISOString(),
+          });
+
+          dpaNotificationCount++;
+          console.log(`通知送信: ${title}`);
+        }
+      }
     }
 
-    return { statusCode: 202, body: 'ok' };
+    // 古い通知履歴を掃除（7日以上前）
+    const cleanupDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    await sb.from('notified_events').delete().lt('sent_at', cleanupDate);
+
+    console.log(`通知完了: 休止/再開=${openNotificationCount}件, DPA/PP=${dpaNotificationCount}件`);
+    return {
+      statusCode: 202,
+      body: JSON.stringify({
+        ok: true,
+        notifications: {
+          open_close: openNotificationCount,
+          dpa_pp: dpaNotificationCount,
+          total: openNotificationCount + dpaNotificationCount
+        }
+      })
+    };
+
   } catch (err) {
-    console.error(err);
+    console.error('notify-all error:', err);
     return { statusCode: 500, body: String(err?.message || err) };
   }
 }
