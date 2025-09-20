@@ -1,356 +1,2175 @@
-<!DOCTYPE html>
-<html lang="ja" data-theme="auto" data-density="comfort" data-contrast="normal">
+<!doctype html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>TDR 待ち時間・DPA通知 (v2.2.1)</title>
-  <!-- PWA / iOS 最適化 -->
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="TDR Now" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <meta name="theme-color" content="#0ea5e9" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TDR DPA & 待ち時間 通知アプリ</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  :root { --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --mute:#94a3b8; --line:#1f2937; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; --warn:#fbbf24; }
+  *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif}
+  a{color:var(--accent)} header{position:sticky;top:0;background:#0b1220;border-bottom:1px solid var(--line);z-index:10}
+  .wrap{max-width:1200px;margin:0 auto;padding:14px}
+  .g{display:grid;gap:12px} .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select,button{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#0b1220;color:var(--ink);outline:none}
+  button{cursor:pointer} .cta{background:var(--accent);color:#00111a;border:0;font-weight:800}
+  .mut{color:var(--mute)} .mono{font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:middle}
+  .tag{font-size:12px;border:1px solid var(--line);padding:2px 8px;border-radius:8px;color:var(--mute)}
+  .tag.dpa{color:#93c5fd;border-color:#1e3a8a}.tag.pp{color:#a7f3d0;border-color:#064e3b}
+  .good{color:var(--good)} .bad{color:var(--bad)} .fav{cursor:pointer}
+  .plan{white-space:pre-wrap;background:#0b1220;border:1px dashed #334155;padding:10px;border-radius:12px}
+  .pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .w120{width:120px}
+  .modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center}
+  .modal.on{display:flex}
+  .card{background:#0b1220;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:320px;max-width:420px}
 
-  <style>
-    :root { --bg:#f7fafc; --panel:#fff; --text:#0f172a; --muted:#475569; --line:#e5e7eb; --accent:#0ea5e9; --accent-2:#6366f1; --good:#10b981; --warn:#f59e0b; --bad:#ef4444; --card-shadow:0 8px 24px rgba(2,8,23,.06); --radius:16px; --tap:48px; --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px); --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-    @media (prefers-color-scheme: dark){ html[data-theme="auto"]{ --bg:#0b1220; --panel:#0f172a; --text:#e5e7eb; --muted:#93a0b0; --line:#1f2937; --accent:#38bdf8; --accent-2:#8b5cf6; --card-shadow:0 10px 30px rgba(2,8,23,.4);} }
-    html[data-theme="dark"]{ --bg:#0b1220; --panel:#0f172a; --text:#e5e7eb; --muted:#93a0b0; --line:#1f2937; --accent:#38bdf8; --accent-2:#8b5cf6; --card-shadow:0 10px 30px rgba(2,8,23,.4); }
-    html[data-theme="light"]{ --bg:#f7fafc; --panel:#fff; --text:#0f172a; --muted:#475569; --line:#e5e7eb; --accent:#0ea5e9; --accent-2:#6366f1; }
-    html[data-contrast="high"]{ --text:#000; --muted:#1f2937; --line:#0ea5e9; --accent:#0ea5e9; --accent-2:#0ea5e9; filter:contrast(1.05) saturate(1.05); }
-    html[data-density="compact"] .panel{ padding:10px; } html[data-density="compact"] .btn, html[data-density="compact"] .pill, html[data-density="compact"] .cta{ padding:8px 10px; } html[data-density="compact"] main{ padding-bottom:calc(76px + var(--safe-bottom)); }
-    *{ box-sizing:border-box; } html,body{ height:100%; } body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","ヒラギノ角ゴ ProN W3",Meiryo,Roboto,Noto Sans JP,Segoe UI,Helvetica,Arial,sans-serif; color:var(--text); background:var(--bg); line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; font-variant-numeric:tabular-nums; }
-    a{ color:inherit; text-decoration:none; } .mut{ color:var(--muted); } .sr-only{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; clip:rect(0 0 0 0); overflow:hidden; }
-    .chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:rgba(14,165,233,.12); border:1px solid rgba(14,165,233,.3); font-size:12px; }
-    .badge{ display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; border:1px solid var(--line); background:rgba(255,255,255,.7); }
-    header.sticky{ position:sticky; top:0; z-index:50; backdrop-filter:saturate(180%) blur(8px); background:rgba(255,255,255,.85); border-bottom:1px solid var(--line); padding:max(8px, calc(8px + var(--safe-top))) 12px 8px; }
-    .header-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; } .title{ font-weight:800; } .subtitle{ font-size:12px; }
-    main{ padding:16px; padding-bottom:calc(88px + var(--safe-bottom)); max-width:1200px; margin:0 auto; }
-    .panel{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--card-shadow); padding:12px; } .panel h2,.panel h3{ margin:6px 0 8px; }
-    .row{ display:flex; align-items:center; gap:8px; } .row.wrap{ flex-wrap:wrap; } .space{ flex:1; }
-    .btn,button,.pill,.cta{ appearance:none; border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--text); padding:10px 14px; font-weight:600; cursor:pointer; min-height:var(--tap); }
-    .btn[aria-pressed="true"], .btn.active{ outline:2px solid rgba(14,165,233,.5); } .cta{ background:var(--accent); border-color:rgba(14,165,233,.4); color:#fff; } .ghost{ background:transparent; }
-    .seg{ display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:4px; gap:4px; } .seg button{ border-radius:999px; border:0; background:transparent; padding:8px 12px; font-weight:700; } .seg button.active{ background:rgba(14,165,233,.18); }
-    .search{ display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:rgba(255,255,255,.7); } .search input{ flex:1; border:0; background:transparent; color:inherit; outline:none; font-size:16px; }
-    .card{ border:1px solid var(--line); border-radius:14px; padding:10px; background:rgba(255,255,255,.92); position:relative; } .card.changed{ animation:glow 1.4s ease-out 1; }
-    @keyframes glow{ 0%{ box-shadow:0 0 0 0 rgba(14,165,233,.6);} 100%{ box-shadow:0 0 0 12px rgba(14,165,233,0);} }
-    .delta{ font-family:var(--mono); font-size:12px; padding:2px 6px; border-radius:999px; border:1px solid var(--line); } .up{ color:var(--good); border-color:rgba(16,185,129,.5);} .down{ color:var(--bad); border-color:rgba(239,68,68,.5);}
-    .list{ display:grid; gap:8px; }
-    nav.bottom{ position:fixed; left:0; right:0; bottom:0; z-index:60; padding:6px 8px calc(8px + var(--safe-bottom)); background:rgba(255,255,255,.95); border-top:1px solid var(--line); display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
-    .nav-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; border-radius:12px; padding:8px 4px; } .nav-item.active{ outline:2px solid rgba(14,165,233,.45); }
-    #pullRefresh{ position:sticky; top:0; z-index:40; display:flex; align-items:center; justify-content:center; height:40px; transform:translateY(-40px); transition:transform .2s ease; } #pullRefresh.show{ transform:translateY(0); }
-    table{ width:100%; border-collapse:collapse; } th,td{ border-bottom:1px solid var(--line); padding:10px; text-align:left; }
-    :focus-visible{ outline:3px solid rgba(14,165,233,.6); outline-offset:3px; border-radius:8px; }
-    #historySheet{ position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:flex-end; z-index:80; } #historyPanel{ background:var(--panel); border-top-left-radius:16px; border-top-right-radius:16px; max-height:80dvh; overflow:auto; padding:12px; border-top:1px solid var(--line); box-shadow:0 -10px 30px rgba(0,0,0,.25); width:100%; }
-  </style>
+  /* 待ち時間による色分け */
+  .wait-low { color: var(--good); }
+  .wait-med { color: var(--warn); }
+  .wait-high { color: var(--bad); }
+
+  /* フィルタボタンのトグル表示 */
+  .filter-btn {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+  }
+  .filter-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  .filter-btn input[type="checkbox"] { display: none; }
+
+  /* お気に入りクイックアクセス */
+  .favorites-quick {
+    background: linear-gradient(135deg, #1e3a8a 0%, #111827 100%);
+    border: 1px solid #2563eb;
+  }
+  .fav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .fav-item {
+    background: #0b1220;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .fav-item .name {
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .fav-item .wait-time {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .fav-item .status {
+    font-size: 10px;
+    color: var(--mute);
+  }
+
+  /* 混雑度インジケーター */
+  .crowd-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #0b1220;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+  }
+  .crowd-level {
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  .crowd-low { background: rgba(34, 197, 94, 0.2); color: var(--good); }
+  .crowd-med { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
+  .crowd-high { background: rgba(239, 68, 68, 0.2); color: var(--bad); }
+
+  /* スケルトンローディング */
+  .skeleton {
+    background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: 8px;
+    height: 20px;
+    margin: 4px 0;
+  }
+  @keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* DPAカウントダウン */
+  .dpa-countdown {
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(56, 189, 248, 0.2);
+    color: var(--accent);
+  }
+
+  /* モバイル用下部ナビ */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #0b1220;
+    border-top: 2px solid var(--line);
+    display: none;
+    grid-template-columns: repeat(4, 1fr);
+    padding: 8px;
+    z-index: 100;
+  }
+  .bottom-nav.show { display: grid; }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .nav-item:active { background: var(--panel); }
+  .nav-icon { font-size: 20px; }
+  .nav-label { font-size: 10px; color: var(--mute); }
+
+  @media (max-width: 720px){
+    .g2{ grid-template-columns: 1fr; }
+    header .row{ gap:6px; flex-wrap:wrap; }
+    header{ position: static !important; top:auto !important; }
+    .row{ gap:6px; }
+    input,select,button{ font-size:16px; }
+    table{ display:block; overflow-x:auto; white-space:nowrap; font-size:14px; }
+    th,td{ padding:6px 4px; }
+    .bottom-nav { display: grid; }
+    body { padding-bottom: 80px; }
+  }
+
+  /* デフォルトでカードを非表示 */
+  .qt-cards { display: none; }
+  
+  /* モバイルのみカード表示 */
+  @media (max-width: 480px) {
+    #qt table { display: none !important; }
+    .qt-cards { display: block !important; }
+  }
+  
+  /* PCではテーブルのみ表示 */
+  @media (min-width: 481px) {
+    #qt table { display: table !important; }
+    .qt-cards { display: none !important; }
+  }
+
+  .qt-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .qt-card {
+    background:#0b1220; border:1px solid var(--line); border-radius:12px; padding:12px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .qt-card .title { font-weight:600; }
+  .qt-card .meta { font-size:12px; }
+  .qt-card .meta.open { color:var(--good); }
+  .qt-card .meta.closed { color:var(--bad); }
+  .qt-card .wait { font: 700 18px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
+  .qt-card .star { font-size:20px; cursor:pointer; }
+
+  /* DPA/PP カード */
+  .dpa-cards { display: none; }                /* デフォは非表示（PC） */
+  .dpa-card {
+    background:#0b1220; border:1px solid var(--line); border-radius:12px; padding:12px;
+    display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
+  }
+  .dpa-card .title { font-weight:600; }
+  .dpa-card .badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .dpa-card .when { font-size:12px; color:var(--mute); }
+  .tag.good { color: var(--good);  border-color: #14532d; }
+  .tag.bad  { color: var(--bad);   border-color: #7f1d1d; }
+  .tag.warn { color: var(--warn);  border-color: #713f12; }
+  
+  /* スマホではカード表示、テーブル非表示 */
+  @media (max-width: 480px) {
+    #dpa table { display:none !important; }
+    .dpa-cards { display:grid !important; grid-template-columns:1fr; gap:8px; }
+  }
+
+  .tag.stale{ border-color:#7f1d1d; color:#fca5a5 }
+  .tag.fresh{ border-color:#1e3a8a; color:#93c5fd }
+
+  /* プルリフレッシュ */
+  .pull-refresh {
+    position: fixed;
+    top: -80px;
+    left: 0;
+    right: 0;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    transition: transform 0.2s;
+    z-index: 9;
+  }
+  .pull-refresh.show { transform: translateY(80px); }
+  .pull-refresh.pulling { transition: none; }
+  .pull-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .pull-text { margin-left: 12px; color: var(--mute); }
+  /* ==== UI: 一貫化テーマ & タブ/強調色 強化 ==== */
+
+  /* 統一トーン（既存カラー変えずにアクセントだけ調整） */
+  .badge { border:1px solid var(--line); border-radius:10px; padding:2px 8px; font-size:12px; }
+  .badge.on   { color: var(--good);  border-color:#14532d; background: rgba(34,197,94,.10); }
+  .badge.off  { color: #9ca3af;     border-color:#374151; background: rgba(156,163,175,.10); }
+  .badge.warn { color: var(--warn);  border-color:#713f12; background: rgba(251,191,36,.10); }
+  
+  .status-chip { font-weight:700; padding:2px 8px; border-radius:8px; }
+  .status-open   { color: var(--good);  background: rgba(34,197,94,.15); }
+  .status-closed { color: var(--bad);   background: rgba(239,68,68,.15); }
+  
+  /* DPA/PP 統一表示 */
+  .dpa-on  { color: var(--good);  border-color:#14532d; }
+  .dpa-end { color: #9ca3af;      border-color:#374151; }
+  .pp-on   { color: #a78bfa;      border-color:#4c1d95; } /* PPは紫系で統一 */
+  
+  /* 見出し下にタブ（PC向け） */
+  .tabs {
+    display:flex; gap:8px; padding:8px 0; position:sticky; top:52px; z-index:9;
+    background:#0b1220; border-bottom:1px solid var(--line);
+  }
+  .tab-btn {
+    border:1px solid var(--line); border-radius:999px; padding:8px 14px; cursor:pointer;
+    background:var(--panel); color:var(--ink); font-weight:600; transition:.2s;
+  }
+  .tab-btn.active { background: var(--accent); color:#000; border-color:var(--accent); }
+  
+  /* 下部ナビのアクティブ強調（モバイル） */
+  .bottom-nav .nav-item.active { background: var(--panel); border:1px solid var(--accent); }
+  
+  /* カード影・角丸をやや強調 */
+  .panel, .qt-card, .dpa-card, .card {
+    box-shadow: 0 6px 16px rgba(0,0,0,.25);
+    border-radius:16px;
+  }
+  
+  /* テーブルのヘッダ強調 */
+  thead th { color:#cbd5e1; font-weight:700; }
+  
+  /* 便利トグル（チップ風） */
+  .pill.toggle { cursor:pointer; user-select:none; }
+  .pill.toggle input[type="checkbox"]{ display:none; }
+  .pill.toggle.active{ border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  
+  /* セクション間の余白 微調整 */
+  .panel h3 { display:flex; align-items:center; gap:8px; }
+  /* タイムライン表 */
+  .timeline { border-collapse: collapse; width:100%; font-size: 12px; }
+  .timeline th, .timeline td { border:1px solid #273244; padding:4px 6px; text-align:center; }
+  .timeline .on  { background:#164e63; color:#a7f3d0; font-weight:700; }
+  .timeline .off { background:#0b1220; color:#64748b; }
+  .timeline .head { position:sticky; top:0; background:#0b1220; z-index:2; }
+  /* タイムライン横スクロール用ラッパ */
+  .timeline-wrap{
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; /* iOSなめらか */
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  
+  /* テーブルを“必要なだけ横に広げる” */
+  .timeline{
+    width: max-content;  /* 列数に応じて横方向へ拡張 */
+    table-layout: fixed; /* セル折り返しを抑える */
+    white-space: nowrap;
+  }
+  
+  /* 先頭列（時刻）を固定して見やすく */
+  .timeline th:first-child,
+  .timeline td:first-child{
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #0b1220;
+  }
+  
+  /* 列幅をコンパクトに */
+  .timeline th, .timeline td{
+    min-width: 80px;         /* 列幅（必要なら調整） */
+    padding: 6px 8px;
+    text-align: center;
+  }
+  
+  /* モバイル時はさらに詰める＆スクロールバー見やすく */
+  @media (max-width: 720px){
+    .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
+    .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグしやすく */
+  }
+  /* モバイル(PWA)は上タブを隠し、下のボトムナビだけにする */
+  @media (max-width: 720px){
+    .tabs{ display: none !important; }
+  }
+  /* ページ全体は横幅固定（表のはみ出しで画面幅が広がらないように） */
+  html, body { max-width: 100%; overflow-x: hidden; }
+  
+  /* タイムライン横スクロール用ラッパ（ここが“横スクロール領域”） */
+  .timeline-wrap{
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; /* iOSなめらか */
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  
+  /* テーブル自体は“必要なだけ横に広がる”。列が少ない時は100%を維持 */
+  .timeline{
+    width: max-content;     /* 列数に応じて横へ拡張 */
+    min-width: 100%;        /* 少ない時はコンテナいっぱい */
+    table-layout: fixed;    /* 折返し抑制＋高速描画 */
+    white-space: nowrap;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  
+  /* 先頭の「時刻」列は固定。leftの代わりに論理プロパティで描画崩れ回避 */
+  .timeline th:first-child,
+  .timeline td:first-child{
+    position: sticky;
+    inset-inline-start: 0;  /* left:0 相当（RTLでも安全） */
+    background: #0b1220;
+    z-index: 1;
+  }
+  
+  /* 列幅をコンパクトに（必要に応じて数値調整） */
+  .timeline th, .timeline td{
+    min-width: 80px;
+    padding: 6px 8px;
+    text-align: center;
+  }
+  
+  /* モバイル最適化：さらに詰める＆ドラッグしやすい余白 */
+  @media (max-width: 720px){
+    .timeline th, .timeline td{ min-width: 72px; padding: 6px 6px; font-size: 12px; }
+    .timeline-wrap{ margin: 0 -8px; padding: 0 8px; } /* 端までドラッグOK */
+  }
+  /* 汎用：横スクロールする箱（中身だけ横に流れる） */
+  .hscroll{
+    width:100%;
+    max-width:100vw;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  
+  /* 汎用：箱の中の横に広がる表 */
+  .hscroll-table{
+    width:max-content;      /* 列が多いほど横へ拡張 */
+    min-width:100%;         /* 列が少ない時は箱いっぱい */
+    table-layout:fixed;
+    white-space:nowrap;
+    border-collapse:separate;
+    border-spacing:0;
+  }
+  
+  /* 先頭列を固定したい表に付与（sticky-first） */
+  .sticky-first th:first-child,
+  .sticky-first td:first-child{
+    position:sticky;
+    inset-inline-start:0;   /* left:0 相当 */
+    background:#0b1220;
+    z-index:1;
+  }
+  
+  /* ページ幅は固定（表のはみ出しで画面幅を広げない） */
+  html,body{ max-width:100%; overflow-x:hidden; }
+  
+  @media (max-width:720px){
+    .hscroll{ margin:0 -8px; padding:0 8px; } /* 端までドラッグしやすく */
+    .hscroll-table th,.hscroll-table td{ min-width:72px; padding:6px 6px; font-size:12px; }
+  }
+
+  /* 重要：モバイルでも hscroll-table はテーブル挙動のまま */
+  .hscroll-table{ display: table !important; }
+
+</style>
 </head>
 <body>
-  <header class="sticky" role="banner">
-    <div class="header-row">
-      <div>
-        <div class="title">TDR 待ち時間・DPA通知 <span class="badge" id="appVer">v2.2.1</span></div>
-      </div>
-      <div class="row wrap">
-        <button id="btnInstall" class="btn ghost" aria-label="ホーム画面へ追加">📲 インストール</button>
-        <div class="seg" role="tablist" aria-label="テーマ切替">
-          <button id="themeLight" aria-pressed="false">☀️ 明</button>
-          <button id="themeAuto" class="active" aria-pressed="true">🌓 自</button>
-          <button id="themeDark" aria-pressed="false">🌙 暗</button>
-        </div>
-        <div class="seg" role="tablist" aria-label="密度">
-          <button id="densComfort" class="active" aria-pressed="true">ゆったり</button>
-          <button id="densCompact" aria-pressed="false">詰める</button>
-        </div>
-        <div class="seg" role="tablist" aria-label="コントラスト">
-          <button id="contrastNorm" class="active" aria-pressed="true">標準</button>
-          <button id="contrastHigh" aria-pressed="false">高コントラスト</button>
-        </div>
-        <div class="seg" role="tablist" aria-label="自動更新">
-          <button id="autoOff" class="active" aria-pressed="true" data-sec="0">手動</button>
-          <button id="auto15" aria-pressed="false" data-sec="15">15s</button>
-          <button id="auto30" aria-pressed="false" data-sec="30">30s</button>
-          <button id="auto60" aria-pressed="false" data-sec="60">60s</button>
-        </div>
-        <button id="btnShare" class="btn ghost" title="現在の状態を共有">🔗 共有</button>
-      </div>
-    </div>
-  </header>
+<div class="pull-refresh" id="pullRefresh">
+  <div class="pull-spinner" id="pullSpinner" style="display:none"></div>
+  <div class="pull-text" id="pullText">下に引っ張って更新</div>
+</div>
 
-  <div id="pullRefresh" aria-hidden="true"><span class="badge">下に引っ張って更新</span></div>
-  <div id="crowdIndicator" class="sr-only"></div>
-
-  <main id="main" role="main">
-    <section class="panel" id="summary">
-      <div class="row wrap">
-        <div class="chip"><b>🎛 混雑</b> <span id="crowdLevel">—</span></div>
-        <div class="chip"><b>⏱ 平均</b> <span id="avgWait">—</span></div>
-        <div class="chip"><b>🎫 DPA</b> <span id="dpaCount">—</span></div>
-        <div class="chip"><b>🪪 PP</b> <span id="ppCount">—</span></div>
-        <div class="chip"><b>🗓 最終</b> <span id="lastUpdated">—</span></div>
-        <div class="chip"><b>⏳ 次</b> <span id="autoCountdown">—</span></div>
-        <div class="space"></div>
-        <button id="btnRefresh" class="cta">🔄 最新に更新</button>
-      </div>
-    </section>
-
-    <section class="panel" id="controls">
-      <div class="row wrap">
-        <div class="seg" role="tablist" aria-label="パーク選択">
-          <button id="parkTDL" class="active" data-park="274" aria-pressed="true">🏰 TDL</button>
-          <button id="parkTDS" data-park="275" aria-pressed="false">🌋 TDS</button>
-        </div>
-        <div class="space"></div>
-        <div class="search" aria-label="検索">
-          <span>🔎</span>
-          <input id="searchInput" type="search" placeholder="アトラク名で検索" autocomplete="off" />
-        </div>
-      </div>
-      <div class="row wrap" style="margin-top:8px">
-        <button class="btn" id="fltFast">≤20分</button>
-        <button class="btn" id="fltDPA">DPA販売中</button>
-        <button class="btn" id="fltPP">PP発行中</button>
-        <button class="btn" id="fltDown">運営停止</button>
-        <button class="btn" id="fltFavs">★ お気に入り</button>
-        <div class="space"></div>
-        <button class="btn ghost" id="btnClear">フィルタ解除</button>
-      </div>
-    </section>
-
-    <section class="panel" id="insight">
-      <h3 style="margin:0">💡 インサイト</h3>
-      <div id="insightList" class="list" style="margin-top:6px"></div>
-    </section>
-
-    <section class="panel" id="favsQuick" style="display:none">
-      <h3>⭐ よく見る施設</h3>
-      <div id="favChips" class="row wrap"></div>
-    </section>
-
-    <span id="qtAnchor"></span>
-
-    <section class="panel" id="qt">
-      <div class="row" style="justify-content:space-between"><h2 style="margin:0">⏱ 待ち時間</h2><div class="row"><button id="viewCards" class="btn active">カード</button><button id="viewTable" class="btn">テーブル</button></div></div>
-      <div id="qtCards" class="list" style="margin-top:8px"></div>
-      <div id="qtTableWrap" style="display:none; margin-top:8px">
-        <table id="qtTable"><thead><tr><th>施設</th><th>待ち</th><th>Δ</th><th>状態</th><th>タグ</th><th>操作</th></tr></thead><tbody></tbody></table>
-      </div>
-    </section>
-
-    <span id="dpaAnchor"></span>
-
-    <section class="panel" id="dpa">
-      <div class="row" style="justify-content:space-between">
-        <h2 style="margin:0">🎫 DPA / PP</h2>
-        <div class="row">
-          <button id="btnHistoryAll" class="btn">販売履歴</button>
-          <button id="btnCopyOn" class="btn ghost" title="販売/発行中一覧をコピー">📋 現在 ON をコピー</button>
-          <button id="btnFetchDpa" class="btn">再取得</button>
-        </div>
-      </div>
-      <div id="dpaList" class="list" style="margin-top:8px"></div>
-    </section>
-
-    <section class="panel" id="timeline">
-      <h3 style="margin-top:0">🕒 タイムライン（直近の変化）</h3>
-      <div id="tlList" class="list"></div>
-    </section>
-
-    <span id="favsAnchor"></span>
-
-    <section class="panel" id="favs">
-      <div class="row" style="justify-content:space-between">
-        <h2 style="margin:0">⭐ お気に入り</h2>
-        <div class="row">
-          <button id="btnFavExport" class="btn">エクスポート</button>
-          <button id="btnFavImport" class="btn ghost">インポート</button>
-        </div>
-      </div>
-      <div id="favList" class="list" style="margin-top:8px"></div>
-    </section>
-
-    <span id="scheduleAnchor"></span>
-
-    <section class="panel" id="schedule">
-      <div class="row" style="justify-content:space-between">
-        <h2 style="margin:0">📅 予定</h2>
-        <div class="row">
-          <input id="schInput" class="btn" placeholder="例: 12:30 ベイマックス" style="min-width:220px" />
-          <button id="schAdd" class="btn">追加</button>
-          <button id="schClear" class="btn ghost">全消去</button>
-        </div>
-      </div>
-      <div id="schList" class="list" style="margin-top:8px"></div>
-      <div class="mut" style="margin-top:6px">ドラッグ＆ドロップで順序変更できます</div>
-    </section>
-
-    <section class="panel" id="notifPanel">
-      <h3 style="margin-top:0">🔔 通知</h3>
-      <div class="row wrap" style="align-items:center">
-        <button id="btnTestNotify" class="btn">テスト通知</button>
-        <button id="btnFetchNotifs" class="btn">履歴を読み込み</button>
-        <span class="mut" id="quietHoursHint">—</span>
-      </div>
-      <div id="notifList" class="list" style="margin-top:8px"></div>
-    </section>
-
-  </main>
-
-  <div id="historySheet" role="dialog" aria-modal="true">
-    <div id="historyPanel">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <h3 style="margin:0">📜 販売履歴 <small class="mut" id="histScope">（全体）</small></h3>
-        <div class="row">
-          <button id="histFavsOnly" class="btn ghost" aria-pressed="false">★のみ</button>
-          <button id="btnHistoryClose" class="btn">閉じる</button>
-        </div>
-      </div>
-      <div id="histList" class="list" style="margin-top:8px"></div>
+<header><div class="wrap">
+  <div class="row" style="justify-content:space-between">
+    <div><strong>🧭 TDR DPA & 待ち時間 通知</strong></div>
+    <div class="row">
+      <span id="userEmail" class="mut"></span>
+      <button id="btnOpenLogin" class="cta">ログイン / 新規登録</button>
+      <button id="btnLogout">ログアウト</button>
+      <button id="btnInstall">アプリをインストール</button>
     </div>
   </div>
+</div></header>
+  
+<nav class="tabs" id="topTabs">
+  <button class="tab-btn active" data-target="qt">⏱ 待ち時間</button>
+  <button class="tab-btn" data-target="dpa">🎫 DPA/PP</button>
+  <button class="tab-btn" data-target="favs">⭐ お気に入り</button>
+  <button class="tab-btn" data-target="schedule">📅 スケジュール</button>
+</nav>
 
-  <nav class="bottom" role="navigation" aria-label="メインナビ">
-    <button class="nav-item active" data-target="qt"><div>⏱</div><small>待ち時間</small></button>
-    <button class="nav-item" data-target="dpa"><div>🎫</div><small>DPA/PP</small></button>
-    <button class="nav-item" data-target="insight"><div>💡</div><small>インサイト</small></button>
-    <button class="nav-item" data-target="favs"><div>⭐</div><small>お気に入り</small></button>
-    <button class="nav-item" data-target="schedule"><div>📅</div><small>予定</small></button>
-  </nav>
+<main class="wrap g">
+  <!-- 混雑度インジケーター -->
+  <div class="crowd-indicator" id="crowdIndicator">
+    <span>現在の混雑度:</span>
+    <span class="crowd-level" id="crowdLevel">計測中...</span>
+    <span id="avgWaitTime" class="mut"></span>
+  </div>
 
-  <script>
+  <!-- お気に入りクイックアクセス -->
+  <section class="panel favorites-quick" id="favoritesQuick" style="display:none">
+    <h3 style="margin-top:0">⭐ お気に入り施設</h3>
+    <div class="fav-grid" id="favGrid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="row">
+      <label>パーク：</label>
+      <select id="park"><option value="274">東京ディズニーランド</option><option value="275">東京ディズニーシー</option></select>
+      <button id="btnNotify" class="cta">プッシュ通知を有効化</button>
+      <span class="mut">（ブラウザの通知を許可してください）</span>
+    </div>
+    <div class="row">
+      <span class="pill">フィルタ：</span>
+      <label class="filter-btn" id="filterDpaOnly"><input type="checkbox" id="fDpaOnly"> DPA対象のみ</label>
+      <label class="filter-btn" id="filterKids"><input type="checkbox" id="fKids"> こども向け</label>
+      <label class="filter-btn" id="filterFavOnly"><input type="checkbox" id="fFavOnly"> ★ お気に入りのみ</label>
+      
+      <label class="pill">待ち時間 ≤ <input type="number" id="fMaxWait" value="999" class="w120"> 分</label>
+      
+      <!-- 追加: ステータス / エリア / クイック -->
+      <label class="pill toggle" id="tgOpenOnly"><input type="checkbox" id="fOpenOnly">運営中のみ</label>
+      <label class="pill toggle" id="tgClosedOnly"><input type="checkbox" id="fClosedOnly">休止中のみ</label>
+      <label class="pill">エリア
+        <select id="areaSel"><option value="">すべて</option></select>
+      </label>
+      <button type="button" id="btnQuickEasy" class="pill">空いてる(≤20分)</button>
+      <button type="button" id="btnQuickFavDpa" class="pill">★&DPA販売中</button>
+      
+      <label class="pill">並び順：
+        <select id="sortBy">
+          <option value="name">名前</option>
+          <option value="wait">待ち時間（短い順）</option>
+          <option value="wait_desc">待ち時間（長い順）</option>
+          <option value="open">運営中を先に</option>
+          <option value="fav_first">★を先に</option>
+          <option value="dpa_first">DPA販売中を先に</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <section class="g g2">
+    <div class="panel">
+      <h3 style="margin-top:0">⏱ 最新待ち時間</h3>
+      <div class="row">
+        <button id="btnRefresh" class="cta">最新の待ち時間を表示</button>
+        <label class="pill"><input type="checkbox" id="autoRefresh" checked> 自動更新</label>
+        <span id="qtUpdated" class="tag"></span>
+        <span class="mut">サーバは1〜2分ごと保存</span>
+      </div>
+      <div id="qtLoading" style="display:none">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
+      <div id="qt"></div>
+      <div style="margin-top:10px">
+        <strong>🎯 いま行くなら（お気に入りから）</strong>
+        <div id="nowTips" class="mut">お気に入り（★）が未選択です。</div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">🎫 DPA / PP ステータス</h3>
+      <div class="row">
+        <button id="btnFetchDpa" class="cta">最新を取得（約15秒）</button>
+        <span class="pill">自動更新</span>
+        <label class="pill"><input type="checkbox" id="fFavOnlyDpa"> お気に入りのみ</label>
+        <label class="pill"><input type="checkbox" id="fDpaOnSale"> DPA販売中のみ</label>
+        <label class="pill"><input type="checkbox" id="fPpOnSale"> PP発行中のみ</label>
+        <label class="pill"><input type="checkbox" id="fShowAllDpa"> すべて表示</label>
+        <span id="dpaUpdated" class="tag"></span>
+        <label class="pill">並び順：
+          <select id="sortByDpa">
+            <option value="smart">販売/発行中を先に（既定）</option>
+            <option value="name">名前</option>
+            <option value="dpa">DPA販売中を先に</option>
+            <option value="pp">PP発行中を先に</option>
+            <option value="recent">更新が新しい順</option>
+          </select>
+        </label>
+      </div>
+      <div id="dpa"></div>
+    </div>
+  </section>
+  <section class="panel" id="timelinePanel">
+  <h3 style="margin-top:0">📊 今日の販売タイムライン（8:00–21:00 / 15分刻み）</h3>
+  <div class="row" style="gap:8px;align-items:center">
+    <label class="pill">対象
+      <select id="tlKind">
+        <option value="dpa">DPA（販売中）</option>
+        <option value="pp">PP（発行中）</option>
+      </select>
+    </label>
+    <span id="tlUpdated" class="tag"></span>
+    </div>
+    <div class="timeline-wrap" id="timelineWrap">
+      <div id="timeline"></div>
+    </div>
+  </section>
+  <section class="panel">
+    <h3 style="margin-top:0">🔔 通知ルール</h3>
+    <div class="row">
+      <label class="pill"><input type="checkbox" id="rCloseReopen" checked> 休止/再開</label>
+      <label class="pill"><input type="checkbox" id="rDpaSale" checked> DPA販売の変化（開始/終了）</label>
+      <label class="pill">スパイク閾値（急変判定幅）±<input type="number" id="rSpike" value="20" class="w120"> 分</label>
+      <label class="pill">DPA開始の <input type="number" id="rWindow" value="10" class="w120"> 分前に通知</label>
+      <button id="btnSaveRules" class="cta">保存</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="pill">Pushover User Key</label>
+      <input id="poKey" placeholder="例：uQiRzpo4DXghDmr9QzzfQu27cmVRsG" style="min-width:320px">
+      <input id="poLabel" placeholder="端末名(任意)">
+      <button id="btnSavePushover" class="cta">Pushoverキーを保存</button>
+      <span class="mut">※登録するとネイティブ通知も受け取れます</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3 style="margin-top:0">⭐ お気に入り / プリセット</h3>
+    <div class="row">
+      <input id="presetName" placeholder="プリセット名">
+      <button id="btnSavePreset" class="cta">現在の★をプリセット保存</button>
+      <select id="presetSelect"></select>
+      <button id="btnLoadPreset">プリセット読込</button>
+    </div>
+    <div id="favs" class="mut">★をクリックするとお気に入りに追加/解除できます。</div>
+  </section>
+
+  <section class="panel">
+    <h3 style="margin-top:0">🧾 DPA購入管理（開始→終了は自動で+1時間 / スケジュールに自動反映）</h3>
+    <div class="grid3">
+      <div><label>施設</label><input id="buyName" list="dpaNames" placeholder="（候補からクリックでも入力）"></div>
+      <div><label>開始</label><input id="buyStart" type="datetime-local"></div>
+      <div><label>終了</label><input id="buyEnd" type="datetime-local"></div>
+      <div><label>枚数</label><input id="buyQty" type="number" value="1"></div>
+      <div><label>メモ</label><input id="buyNote"></div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button id="btnAddPurchase" class="cta">登録</button>
+        <span class="mut">※その日の「自動スケジュール」に即時追加されます</span>
+      </div>
+    </div>
+    <div id="purchases"></div>
+    <div id="autoSchedLink" class="mut" style="margin-top:8px"></div>
+  </section>
+
+  <section class="panel">
+    <h3 style="margin-top:0">📅 手動スケジュール作成（回数指定＆固定イベント・簡易エリア最適化）</h3>
+    <div class="row">
+      <label>開始時刻</label><input id="startTime" type="time" value="09:00">
+      <label>徒歩/移動(分)</label><input id="walk" type="number" value="10" class="w120">
+      <button id="btnPlan" class="cta">生成して保存</button>
+      <span id="shareLink" class="mut"></span>
+    </div>
+
+    <h4 style="margin:12px 0 6px">🎉 固定イベント（パレード/ショー）</h4>
+    <div class="grid3" style="margin-bottom:8px">
+      <div>
+        <label>名称</label>
+        <input id="evName" list="paradeNames" placeholder="例：デイ・パレード">
+      </div>
+      <div>
+        <label>開始</label>
+        <input id="evStart" type="datetime-local">
+      </div>
+      <div>
+        <label>所要(分)</label>
+        <input id="evDur" type="number" value="30">
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button id="btnAddEvent" class="cta">追加</button>
+        <span class="mut">※固定イベントはこの時間を優先。待ち時間計算は使いません。</span>
+      </div>
+    </div>
+    <div id="eventsList"></div>
+
+    <h4 style="margin:12px 0 6px">🔢 回数指定（★が対象）</h4>
+    <div id="counts"></div>
+
+    <div id="planOut" class="plan" style="margin-top:10px"></div>
+  </section>
+
+  <section class="panel">
+    <h3 style="margin-top:0">🔔 通知フィード</h3>
+    <div id="feed"></div>
+  </section>
+</main>
+
+<!-- モバイル用下部ナビ -->
+<div class="bottom-nav" id="bottomNav">
+  <div class="nav-item" data-target="qt">
+    <span class="nav-icon">⏱</span>
+    <span class="nav-label">待ち時間</span>
+  </div>
+  <div class="nav-item" data-target="dpa">
+    <span class="nav-icon">🎫</span>
+    <span class="nav-label">DPA/PP</span>
+  </div>
+  <div class="nav-item" data-target="favs">
+    <span class="nav-icon">⭐</span>
+    <span class="nav-label">お気に入り</span>
+  </div>
+  <div class="nav-item" data-target="schedule">
+    <span class="nav-icon">📅</span>
+    <span class="nav-label">スケジュール</span>
+  </div>
+</div>
+
+<datalist id="dpaNames"></datalist>
+<datalist id="paradeNames"></datalist>
+
+<div class="modal" id="loginModal">
+  <div class="card">
+    <h3 style="margin-top:0">ログイン / 新規登録</h3>
+    <p class="mut">メールアドレスを入力すると、ログイン用のリンクをお送りします。</p>
+
+    <div class="row" id="emailRow">
+      <input id="loginEmail" type="email" placeholder="your@email.com" style="flex:1">
+    </div>
+
+    <div class="row" style="gap:6px;margin-top:8px">
+      <label class="pill"><input type="radio" name="loginMode" id="modeEmail" checked> メールリンク</label>
+      <label class="pill"><input type="radio" name="loginMode" id="modePw"> ID/パスワード</label>
+    </div>
+
+    <div id="pwBox" style="display:none;margin-top:8px">
+      <div class="row"><input id="loginId" placeholder="メール or ユーザーID" style="flex:1"></div>
+      <div class="row"><input id="loginPw" type="password" placeholder="パスワード" style="flex:1"></div>
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button id="btnSigninPw" class="cta">ログイン</button>
+        <button id="btnSignupPw">新規登録</button>
+      </div>
+    </div>
+
+    <div class="row" id="emailActionRow" style="justify-content:flex-end;gap:8px;margin-top:8px">
+      <button id="btnCloseLogin">閉じる</button>
+      <button id="btnSendLink" class="cta">リンクを送信</button>
+    </div>
+  </div>
+</div>
+
+<script src="/.netlify/functions/env"></script>
+<script type="module">
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (!reg || !reg.waiting) return;
+    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    reg.waiting.addEventListener('statechange', e => {
+      if (e.target.state === 'activated') location.reload();
+    });
+  });
+}
+
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+
+const ENV = window.ENV || {};
+const ALIAS_DOMAIN = (ENV.ALIAS_EMAIL_DOMAIN || 'user.local').toLowerCase();
+const emailFromId = (id)=> id.toLowerCase() + '@' + ALIAS_DOMAIN;
+
+const safeStorage = (()=> {
+  try { const t='__t__'; localStorage.setItem(t,'1'); localStorage.removeItem(t); return localStorage; }
+  catch(e){ let mem={}; return { getItem:k=>mem[k]??null, setItem:(k,v)=>{mem[k]=v}, removeItem:k=>{delete mem[k]} }; }
+})();
+
+const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: safeStorage, storageKey: 'tdr-sb' }
+});
+await supabase.auth.getSession();
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_IN' && location.hash.includes('access_token')) {
+    history.replaceState({}, '', location.pathname + location.search);
+  }
+});
+
+let deferredPrompt=null;
+const btnInstall = document.getElementById('btnInstall');
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; btnInstall.disabled=false; });
+btnInstall.disabled = isIOS ? false : true;
+btnInstall.onclick = async()=>{
+  if (isIOS && !isStandalone) { alert('iPhoneは「共有」→「ホーム画面に追加」でインストール'); return; }
+  if (!deferredPrompt){ alert('インストール条件が未満です。しばらくして再試行してください。'); return; }
+  deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null;
+};
+
+const userEmail = document.getElementById('userEmail');
+const btnOpenLogin = document.getElementById('btnOpenLogin');
+const btnLogout = document.getElementById('btnLogout');
+const loginModal = document.getElementById('loginModal');
+
+const loginEmail = document.getElementById('loginEmail');
+const emailRow = document.getElementById('emailRow');
+const emailActionRow = document.getElementById('emailActionRow');
+const btnSendLink = document.getElementById('btnSendLink');
+
+const modeEmail = document.getElementById('modeEmail');
+const modePw    = document.getElementById('modePw');
+const pwBox     = document.getElementById('pwBox');
+const loginId   = document.getElementById('loginId');
+const loginPw   = document.getElementById('loginPw');
+const btnSigninPw = document.getElementById('btnSigninPw');
+const btnSignupPw = document.getElementById('btnSignupPw');
+
+const poKey = document.getElementById('poKey');
+const poLabel = document.getElementById('poLabel');
+const btnSavePushover = document.getElementById('btnSavePushover');
+
+document.getElementById('btnCloseLogin').onclick = () => loginModal.classList.remove('on');
+btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
+
+// Pushover の User Key を保存（ログイン時= user_id / 未ログイン= device_id）
+async function savePushoverKey() {
+  const key = (poKey?.value || '').trim();
+  const label = (poLabel?.value || '').trim();
+  if (!key) { alert('User Key を入力してください'); return; }
+
+  const { data:{ user } } = await supabase.auth.getUser();
+  const row = user
+    ? { user_id: user.id, user_key: key, label }
+    : { device_id: deviceId, user_key: key, label };
+
+  // まず INSERT
+  let { error } = await supabase.from('pushover_profiles').insert(row);
+  // 一意制約違反(23505)なら UPDATE に切替
+  if (error && /23505/.test(error.code || '') ) {
+    if (user) {
+      ({ error } = await supabase.from('pushover_profiles')
+        .update({ user_key: key, label })
+        .eq('user_id', user.id));
+    } else {
+      ({ error } = await supabase.from('pushover_profiles')
+        .update({ user_key: key, label })
+        .eq('device_id', deviceId));
+    }
+  }
+  if (error) { alert('保存に失敗: ' + (error.message || 'unknown')); return; }
+  alert('Pushoverキーを保存しました');
+}
+
+
+btnSavePushover?.addEventListener('click', savePushoverKey);
+
+
+function applyLoginMode(){
+  const usePw = modePw?.checked;
+  if (pwBox) pwBox.style.display = usePw ? 'block' : 'none';
+  if (emailRow) emailRow.style.display = usePw ? 'none' : 'flex';
+  if (emailActionRow) emailActionRow.style.display = usePw ? 'none' : 'flex';
+}
+if (modeEmail && modePw) { modeEmail.onchange = modePw.onchange = applyLoginMode; }
+btnOpenLogin.onclick = () => {
+  if (modePw) modePw.checked = true;
+  if (modeEmail) modeEmail.checked = false;
+  applyLoginMode();
+  loginModal.classList.add('on');
+  if (loginId) loginId.focus();
+};
+btnSendLink.onclick = async () => {
+  const email = (loginEmail?.value || '').trim();
+  if (!email) return alert('メールを入力');
+  let { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false } });
+  if (error && /user.*not.*found|invalid login|No account/i.test(error.message)) {
+    const r1 = await supabase.auth.signUp({ email, options: { emailRedirectTo: location.origin + '/app.html' } });
+    if (r1.error) return alert(r1.error.message);
+    error = null;
+  }
+  if (error && /Database error saving new user|duplicate key|partial_key/i.test(error.message)) {
+    const r2 = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/app.html', shouldCreateUser: false } });
+    if (r2.error) return alert(r2.error.message);
+  }
+  alert('ログイン用メールを送信しました。'); loginModal.classList.remove('on');
+};
+btnSigninPw.onclick = async ()=>{
+  const id=(loginId?.value||'').trim(); const pw=(loginPw?.value||'').trim();
+  if(!id || !pw) return alert('ID/パスワードを入力してください');
+  const email = id.includes('@') ? id : id.toLowerCase() + '@' + (ENV.ALIAS_EMAIL_DOMAIN||'user.local').toLowerCase();
+  let { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+  if (error){
+    const s = await supabase.auth.signUp({ email, password: pw });
+    if (s.error && !/already|exists/i.test(s.error.message)) return alert(s.error.message);
+    try{ const { data:{ user } } = await supabase.auth.getUser(); if (user) await supabase.from('profiles').upsert({ id:user.id, username:id }).select().single(); }catch(_){}
+    const r2 = await supabase.auth.signInWithPassword({ email, password: pw });
+    if (r2.error) return alert(r2.error.message);
+  }
+  loginModal.classList.remove('on');
+};
+btnSignupPw.onclick = async ()=>{
+  const id=(loginId?.value||'').trim(), pw=(loginPw?.value||'').trim();
+  if(!id || !pw) return alert('ID/パスワードを入力してください');
+  const email = id.includes('@') ? id : id.toLowerCase() + '@' + (ENV.ALIAS_EMAIL_DOMAIN||'user.local').toLowerCase();
+  const s = await supabase.auth.signUp({ email, password: pw });
+  if (s.error && !/already|exists/i.test(s.error.message)) return alert(s.error.message);
+  try{ const { data:{user} }=await supabase.auth.getUser(); if(user) await supabase.from('profiles').upsert({ id:user.id, username:id }); }catch(_){}
+  const r2 = await supabase.auth.signInWithPassword({ email, password: pw });
+  if (r2.error) return alert(r2.error.message);
+  loginModal.classList.remove('on');
+};
+async function refreshAuthUI(){
+  const { data:{ user } } = await supabase.auth.getUser();
+  if (user){
+    let label = user.email || '(ログイン中)';
+    try{
+      const { data: prof } = await supabase.from('profiles').select('username').eq('id', user.id).maybeSingle();
+      if (prof?.username) label = '@' + prof.username;
+    }catch(_){}
+    userEmail.textContent = label;
+    btnOpenLogin.style.display = 'none'; btnLogout.style.display   = 'inline-block';
+  }else{
+    userEmail.textContent = '';
+    btnOpenLogin.style.display = 'inline-block'; btnLogout.style.display   = 'none';
+  }
+}
+await refreshAuthUI();
+supabase.auth.onAuthStateChange(()=>refreshAuthUI());
+
+const DEVICE_ID_KEY = 'tdr-device-id';
+function uuidv4(){
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
+  });
+}
+const deviceId = safeStorage.getItem(DEVICE_ID_KEY) || (safeStorage.setItem(DEVICE_ID_KEY, uuidv4()), safeStorage.getItem(DEVICE_ID_KEY));
+
+const LS = {
+  favKey: (park)=> `fav:${park}`,
+  rulesKey: (park)=> `rules:${park}`,
+  readFavs(park){ try{ return new Set(JSON.parse(safeStorage.getItem(this.favKey(park))||'[]')); }catch{ return new Set(); } },
+  writeFavs(park, set){ safeStorage.setItem(this.favKey(park), JSON.stringify([...set])); },
+  readRules(park){
+    try{ return JSON.parse(safeStorage.getItem(this.rulesKey(park))||''); }catch{ return null; }
+  },
+  writeRules(park, obj){ safeStorage.setItem(this.rulesKey(park), JSON.stringify(obj||{})); }
+};
+  
+// Elements
+const parkSel = document.getElementById('park');
+const qtDiv = document.getElementById('qt');
+const dpaDiv = document.getElementById('dpa');
+const fFavOnly = document.getElementById('fFavOnly');
+const fFavOnlyDpa = document.getElementById('fFavOnlyDpa');
+const fDpaOnSale = document.getElementById('fDpaOnSale');
+const fPpOnSale  = document.getElementById('fPpOnSale');
+const feedDiv = document.getElementById('feed');
+const nowTipsDiv = document.getElementById('nowTips');
+const shareLink=document.getElementById('shareLink');
+const autoSchedLink=document.getElementById('autoSchedLink');
+
+const fDpaOnly = document.getElementById('fDpaOnly');
+const fKids = document.getElementById('fKids');
+const fMaxWait = document.getElementById('fMaxWait');
+const sortBy = document.getElementById('sortBy');
+
+const rCloseReopen = document.getElementById('rCloseReopen');
+const rDpaSale = document.getElementById('rDpaSale');
+const rSpike = document.getElementById('rSpike');
+const rWindow = document.getElementById('rWindow');
+const btnSaveRules = document.getElementById('btnSaveRules');
+
+const presetName=document.getElementById('presetName');
+const presetSelect=document.getElementById('presetSelect');
+
+const buyName=document.getElementById('buyName');
+const buyStart=document.getElementById('buyStart');
+const buyEnd=document.getElementById('buyEnd');
+const buyQty=document.getElementById('buyQty');
+const buyNote=document.getElementById('buyNote');
+
+const planOut=document.getElementById('planOut');
+const countsDiv=document.getElementById('counts');
+const evName = document.getElementById('evName');
+const evStart = document.getElementById('evStart');
+const evDur = document.getElementById('evDur');
+const btnAddEvent = document.getElementById('btnAddEvent');
+const eventsList = document.getElementById('eventsList');
+
+const fOpenOnly   = document.getElementById('fOpenOnly');
+const fClosedOnly = document.getElementById('fClosedOnly');
+const tgOpenOnly  = document.getElementById('tgOpenOnly');
+const tgClosedOnly= document.getElementById('tgClosedOnly');
+const areaSel     = document.getElementById('areaSel');
+const btnQuickEasy    = document.getElementById('btnQuickEasy');
+const btnQuickFavDpa  = document.getElementById('btnQuickFavDpa');
+const sortByDpa   = document.getElementById('sortByDpa');
+
+const state={ favorites:new Set(), qt:[], dpa:[], rules:null, purchases:[], parades:[], fixedManual:[], fixedAuto:[] };
+
+function el(tag, attrs={}, children=[]){ const e=document.createElement(tag); for(const[k,v] of Object.entries(attrs)){ if(k==='class') e.className=v; else if(k.startsWith('on')) e.addEventListener(k.slice(2),v); else e.setAttribute(k,v); } for(const c of (Array.isArray(children)?children:[children])) e.appendChild(typeof c==='string'?document.createTextNode(c):c); return e; }
+function fmtLocal(dt){ 
+  const pad=n=>String(n).padStart(2,'0'); 
+  return dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate()) + 'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()); 
+}
+function normalizeTitle(s){ 
+  return (s||'').replace(/['＇`´']/g,"'").replace(/[""＂]/g,'"').replace(/[＆]/g,'&').replace(/\s+/g,'').replace(/　/g,''); 
+}
+function makeAreaMap(obj){ 
+  const m = new Map(); 
+  for (const [k,v] of Object.entries(obj)) m.set(normalizeTitle(k), v); 
+  return m; 
+}
+
+const AREA_MAP={ 
+  274: makeAreaMap({ 'オムニバス':'ワールドバザール' }), 
+  275: makeAreaMap({ 'ソアリン：ファンタスティック・フライト':'メディテレーニアンハーバー' }) 
+};
+
+function areaOf(nameJa){ 
+  const m = AREA_MAP[parkSel.value]; 
+  return m?.get(normalizeTitle(nameJa)) || '?'; 
+}
+
+function populateAreas(){
+  const m = AREA_MAP[parkSel.value] || new Map();
+  const uniq = new Set([...m.values()]);
+  const opts = ['<option value="">すべて</option>', ...[...uniq].map(a => `<option value="${a}">${a}</option>`)];
+  areaSel.innerHTML = opts.join('');
+}
+
+function fmtUpdated(ts){
+  if (!ts) return '';
+  // スペース区切り対策（Safari等）
+  const iso = typeof ts === 'string' ? ts.replace(' ', 'T') : ts;
+  const d = new Date(iso);
+
+  if (isNaN(d)) return ''; // 念のため
+
+  // JSTの時刻表示（HH:MM）
+  const hhmm = d.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo', hour12: false, hour: '2-digit', minute: '2-digit'
+  });
+
+  // 経過分（UTC基準のエポック差なのでTZ非依存）
+  const diffMin = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+
+  return '最終更新 ' + hhmm + '（' + diffMin + '分前）';
+}
+function setUpdated(el, ts, staleMinutes){ 
+  if (!el) return; 
+  if (!ts){ 
+    el.textContent=''; 
+    el.classList.remove('stale','fresh'); 
+    return; 
+  } 
+  el.textContent = fmtUpdated(ts); 
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(ts).getTime())/60000)); 
+  el.classList.toggle('stale', ageMin >= staleMinutes); 
+  el.classList.toggle('fresh', ageMin < staleMinutes); 
+}
+
+// 待ち時間による色分け関数
+function getWaitClass(wait) {
+  if (wait == null) return '';
+  if (wait <= 20) return 'wait-low';
+  if (wait <= 60) return 'wait-med';
+  return 'wait-high';
+}
+
+// DPAカウントダウン関数
+function getTimeUntil(targetTime) {
+  const diff = Math.floor((new Date(targetTime) - new Date()) / 60000);
+  if (diff > 60) return 'あと' + Math.floor(diff/60) + '時間' + (diff%60) + '分';
+  if (diff > 0) return 'あと' + diff + '分';
+  if (diff > -60) return '利用可能';
+  return '終了';
+}
+
+// 混雑度計算
+function getCrowdLevel() {
+  const openAttractions = state.qt.filter(x => x.open && x.wait != null);
+  if (!openAttractions.length) return { label: '計測中', className: '', avg: null };
+  const avgWait = Math.round(openAttractions.reduce((sum, x) => sum + x.wait, 0) / openAttractions.length);
+  if (avgWait < 30) return { label: '空いている', className: 'crowd-low', avg: avgWait };
+  if (avgWait < 60) return { label: '普通', className: 'crowd-med', avg: avgWait };
+  return { label: '混雑', className: 'crowd-high', avg: avgWait };
+}
+
+buyStart.addEventListener('change', ()=>{ if(!buyStart.value) return; const s=new Date(buyStart.value); const e=new Date(s.getTime()+60*60000); buyEnd.value=fmtLocal(e); });
+
+async function refreshParkLastLabel() {
+  const parkId = parseInt(parkSel.value, 10);
+  const { data, error } = await supabase.from('queue_times').select('fetched_at').eq('park_id', parkId).order('fetched_at', { ascending: false }).limit(1);
+  if (!error && data?.length) setUpdated(document.getElementById('qtUpdated'), data[0].fetched_at, 5);
+}
+
+async function loadQT(forceHeal=false){
+  // ローディング表示
+  document.getElementById('qtLoading').style.display = 'block';
+  qtDiv.style.display = 'none';
+
+  const parkId=parseInt(parkSel.value,10);
+  const { data, error } = await supabase.from('v_queue_times_latest').select('name_ja,name_raw,is_open,wait_time,fetched_at').eq('park_id', parkId).limit(600);
+
+  document.getElementById('qtLoading').style.display = 'none';
+  qtDiv.style.display = 'block';
+
+  if (error){ qtDiv.textContent = error.message; return; }
+  const rows = data || [];
+  const latestTs = rows.length ? rows.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.fetched_at)? mx : r.fetched_at), rows[0].fetched_at) : null;
+  const ageMin = latestTs ? Math.max(0, Math.round((Date.now() - new Date(latestTs).getTime())/60000)) : Infinity;
+  const mostlyClosed = rows.filter(r => (r.wait_time??0)===0 && !r.is_open).length >= Math.max(5, Math.floor(rows.length*0.8));
+  const stale = (!rows.length) || mostlyClosed || (ageMin >= 5);
+  if (stale && !forceHeal){
+    qtDiv.innerHTML = '<div class="mut">最新データが古い/ありません。サーバと同期しています…</div>';
+    try{ await fetch('/.netlify/functions/sync-qt?parkId=' + parkId, { method:'POST' }); }catch(_){}
+    await new Promise(r=>setTimeout(r, 4000));
+    return await loadQT(true);
+  }
+  state.qt = rows.map(r=>({ nameJa:r.name_ja, nameRaw:r.name_raw, open:r.is_open, wait:r.wait_time, time:r.fetched_at }));
+  setUpdated(document.getElementById('qtUpdated'), latestTs, 5);
+  renderQT(); renderCountsEditor(); renderNowTips(); fillDpaNameList(); renderFavoritesQuick(); updateCrowdIndicator();
+  await refreshParkLastLabel();
+}
+
+function applyFilters(list){
+  let out = list.slice(0);
+
+  // 既存：DPA対象・こども向け・待ち時間・★のみ
+  if (fDpaOnly.checked){
+    const dpaSet = new Set(state.dpa.map(d=>d.name));
+    out = out.filter(x=> dpaSet.has(x.nameJa));
+  }
+  if (fKids.checked){
+    out = out.filter(x=> /カルーセル|ダンボ|スモール|バギー|ティンカ|ゴーコースター|メリー|キャラバン/i.test(x.nameJa));
+  }
+  if (Number(fMaxWait.value) < 999){
+    out = out.filter(x=> (x.wait??999) <= Number(fMaxWait.value));
+  }
+  if (fFavOnly?.checked){
+    const favs = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
+    out = out.filter(x=> favs.has(x.nameJa));
+  }
+
+  // 追加：運営/休止の相互排他
+  if (fOpenOnly?.checked && !fClosedOnly?.checked) out = out.filter(x=> !!x.open);
+  if (fClosedOnly?.checked && !fOpenOnly?.checked) out = out.filter(x=> !x.open);
+
+  // 追加：エリア
+  if (areaSel?.value){
+    out = out.filter(x => areaOf(x.nameJa) === areaSel.value);
+  }
+
+  // 並び順
+  const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
+  const dpaOn  = new Set(state.dpa.filter(d=> d.dpa_status==='販売中').map(d=>d.name));
+
+  switch (sortBy.value) {
+    case 'wait':
+      out.sort((a,b)=>(a.wait??999)-(b.wait??999));
+      break;
+    case 'wait_desc':
+      out.sort((a,b)=>(b.wait??-1)-(a.wait??-1));
+      break;
+    case 'open':
+      out.sort((a,b)=> (b.open?1:0)-(a.open?1:0) || (a.wait??999)-(b.wait??999));
+      break;
+    case 'fav_first':
+      out.sort((a,b)=> (favSet.has(b.nameJa)?1:0)-(favSet.has(a.nameJa)?1:0) || a.nameJa.localeCompare(b.nameJa,'ja'));
+      break;
+    case 'dpa_first':
+      out.sort((a,b)=> (dpaOn.has(b.nameJa)?1:0)-(dpaOn.has(a.nameJa)?1:0) || a.nameJa.localeCompare(b.nameJa,'ja'));
+      break;
+    default: // name
+      out.sort((a,b)=>a.nameJa.localeCompare(b.nameJa,'ja'));
+  }
+  return out;
+}
+
+
+function renderQT(){
+  const rows = applyFilters(state.qt);
+  const tbl = el('table',{'data-hscroll':'1','data-sticky-first':'1'},[
+    el('thead',{}, el('tr',{},[el('th',{},'★'),el('th',{},'施設（日本語）'),el('th',{},'待ち'),el('th',{},'状態'),el('th',{},'予測（±30分/同曜日）')])),
+    el('tbody',{}, rows.map(r=>{
+      const fav=state.favorites.has(r.nameRaw);
+      const tr=el('tr',{},[
+        el('td',{}, el('span',{class:'fav',onclick:()=>toggleFav(r.nameRaw)}, fav?'★':'☆')),
+        el('td',{}, r.nameJa),
+        el('td',{}, el('span',{class:'mono ' + getWaitClass(r.wait)}, (r.wait??'-').toString())),
+        el('td',{}, r.open?el('span',{class:'good'},'運営中'):el('span',{class:'bad'},'休止')),
+        el('td',{}, el('span',{class:'mut', id:'pred-' + r.nameRaw}, fav?'…':'-'))
+      ]);
+      if (fav) fetch('/.netlify/functions/qt-stats?park=' + parkSel.value + '&name=' + encodeURIComponent(r.nameRaw))
+        .then(r=>r.json()).then(j=>{ 
+          const elp=document.getElementById('pred-' + r.nameRaw); 
+          if (elp) elp.textContent = j?.median!=null ? j.median + ' 分 (' + j.n + ')' : '-'; 
+        })
+        .catch(()=>{});
+      return tr;
+    }))
+  ]);
+
+  const cards = el('div',{class:'qt-cards'},
+    rows.map(r=>{
+      const fav = state.favorites.has(r.nameRaw);
+      return el('div',{class:'qt-card'},[
+        el('div',{},[
+          el('div',{class:'title'}, r.nameJa),
+          el('div',{class:'meta ' + (r.open ? 'open' : 'closed')}, r.open ? '運営中' : '休止')
+        ]),
+        el('div',{class:'wait ' + getWaitClass(r.wait)}, (r.wait ?? '-') + '分'),
+        el('div',{class:'star', onclick:()=>toggleFav(r.nameRaw)}, fav?'★':'☆')
+      ]);
+    })
+  );
+
+  qtDiv.innerHTML='';
+  qtDiv.appendChild(tbl);
+  enableHScroll(qtDiv);
+  qtDiv.appendChild(cards);
+  
+}
+
+function fillDpaNameList(){
+  const dl=document.getElementById('dpaNames'); dl.innerHTML='';
+  for(const r of state.qt) dl.appendChild(el('option',{value:r.nameJa}));
+}
+
+async function renderNowTips(){
+  const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
+  if (!favs.length){ nowTipsDiv.textContent='お気に入り（★）が未選択です。'; return; }
+  const scored=[];
+  for(const r of favs){
+    let median=null;
+    try{ const j=await (await fetch('/.netlify/functions/qt-stats?park=' + parkSel.value + '&name=' + encodeURIComponent(r.nameRaw))).json(); median=j.median; }catch{}
+    const delta=(median!=null&&r.wait!=null)? (r.wait - median):0;
+    scored.push({ ...r, median, delta });
+  }
+  scored.sort((a,b)=> (a.delta||999) - (b.delta||999) || (a.wait||999)-(b.wait||999));
+  nowTipsDiv.textContent = scored.slice(0,3).map(x=> x.nameJa + '（' + (x.wait??'-') + '分 / 予測' + (x.median??'-') + '）').join(' / ');
+}
+
+// お気に入りクイックアクセス
+function renderFavoritesQuick() {
+  const panel = document.getElementById('favoritesQuick');
+  const grid = document.getElementById('favGrid');
+  const favs = state.qt.filter(x => state.favorites.has(x.nameRaw));
+
+  if (!favs.length) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  grid.innerHTML = '';
+
+  favs.forEach(f => {
+    const item = el('div', {class: 'fav-item'}, [
+      el('div', {class: 'name'}, f.nameJa),
+      el('div', {class: 'wait-time ' + getWaitClass(f.wait)}, (f.wait ?? '-') + '分'),
+      el('div', {class: 'status'}, f.open ? '運営中' : '休止')
+    ]);
+    grid.appendChild(item);
+  });
+}
+
+// 混雑度インジケーター更新
+function updateCrowdIndicator() {
+  const crowd = getCrowdLevel();
+  const levelEl = document.getElementById('crowdLevel');
+  const avgEl = document.getElementById('avgWaitTime');
+
+  levelEl.textContent = crowd.label;
+  levelEl.className = 'crowd-level ' + crowd.className;
+  avgEl.textContent = crowd.avg ? '(平均 ' + crowd.avg + '分)' : '';
+}
+
+// DPA/PP
+async function loadDPA(){
+  const parkCode = parkSel.value==='274' ? 'TDL' : 'TDS';
+  const { data: parks } = await supabase.from('parks').select('id,code').eq('code', parkCode);
+  if (!parks?.length){ dpaDiv.textContent='parks なし'; return; }
+  const parkInternalId = parks[0].id;
+  const { data } = await supabase
+    .from('v_attraction_dpa_latest')
+    .select('name,dpa_status,pp40_status,fetched_at')
+    .eq('park_id', parkInternalId);
+  // 整形＆並び順（販売中/発行中を先頭）
+  const latest = (data||[]).map(r=>({
+    name: r.name, dpa_status: r.dpa_status, pp40_status: r.pp40_status, t: r.fetched_at
+  }));
+  state.dpa = latest;
+
   (function(){
-    const $ = (s, r=document)=>r.querySelector(s);
-    const $$ = (s, r=document)=>Array.from(r.querySelectorAll(s));
-    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-    const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
-    let autoTimer = null, autoRemain = 0;
-    let prevQueuesByName = {}, prevDpaByName = {};
-
-    let state = { park:274, queues:[], dpa:[], favs:new Set(JSON.parse(localStorage.getItem('favs')||'[]')), schedule:JSON.parse(localStorage.getItem('schedule')||'[]'), filters:{fast:false,dpa:false,pp:false,down:false,favs:false,q:''}, view:'cards', theme:localStorage.getItem('theme')||'auto', density:localStorage.getItem('density')||'comfort', contrast:localStorage.getItem('contrast')||'normal', autoSec:+(localStorage.getItem('autoSec')||0), lastFetchAt:null };
-
-    // THEME / DENSITY / CONTRAST
-    initTheme(); initDensity(); initContrast();
-    function initTheme(){ setTheme(state.theme); ['Light','Auto','Dark'].forEach(k=>$('#theme'+k)?.addEventListener('click',()=>setTheme(k.toLowerCase()))); }
-    function setTheme(mode){ document.documentElement.setAttribute('data-theme', mode); localStorage.setItem('theme', mode); state.theme = mode; ['Light','Auto','Dark'].forEach(k=>$('#theme'+k)?.classList.remove('active')); $('#theme'+(mode.charAt(0).toUpperCase()+mode.slice(1)))?.classList.add('active'); ['Light','Auto','Dark'].forEach(k=>$('#theme'+k)?.setAttribute('aria-pressed','false')); $('#theme'+(mode.charAt(0).toUpperCase()+mode.slice(1)))?.setAttribute('aria-pressed','true'); }
-    function initDensity(){ setDensity(state.density); $('#densComfort')?.addEventListener('click',()=>setDensity('comfort')); $('#densCompact')?.addEventListener('click',()=>setDensity('compact')); }
-    function setDensity(v){ document.documentElement.setAttribute('data-density', v); localStorage.setItem('density', v); state.density=v; $('#densComfort').classList.toggle('active', v==='comfort'); $('#densCompact').classList.toggle('active', v==='compact'); $('#densComfort').setAttribute('aria-pressed', v==='comfort'); $('#densCompact').setAttribute('aria-pressed', v==='compact'); }
-    function initContrast(){ setContrast(state.contrast); $('#contrastNorm')?.addEventListener('click',()=>setContrast('normal')); $('#contrastHigh')?.addEventListener('click',()=>setContrast('high')); }
-    function setContrast(v){ document.documentElement.setAttribute('data-contrast', v); localStorage.setItem('contrast', v); state.contrast=v; $('#contrastNorm').classList.toggle('active', v==='normal'); $('#contrastHigh').classList.toggle('active', v==='high'); $('#contrastNorm').setAttribute('aria-pressed', v==='normal'); $('#contrastHigh').setAttribute('aria-pressed', v==='high'); }
-
-    // PWA install
-    let deferredPrompt = null; window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt = e; $('#btnInstall')?.classList.add('cta'); });
-    $('#btnInstall')?.addEventListener('click', async ()=>{ if (window.navigator.standalone === true) return alert('ホーム画面から起動済みです'); if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; return; } alert('Safariの共有ボタンから「ホーム画面に追加」を選んでください'); });
-
-    // SW
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
-
-    async function ensureEnv(){ if (window.ENV && ENV.SUPABASE_URL) return; try { const res = await fetch('/.netlify/functions/env'); const txt = await res.text(); eval(txt); } catch (e) {} }
-
-    // Fetchers
-    async function fetchQueues(){
-      const url = `/.netlify/functions/qt?type=queues&park=${state.park}`;
-      try { const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`); const data = await r.json(); const list = (Array.isArray(data)?data:[]).map(x=>({ name:x.name||x.title||x.canonical_name||'—', wait:x.wait??x.queue??x.minutes??null, status:x.status||x.status_operational||x.state||'記載なし', labels:x.labels||[], href:x.url||x.href||'#' })); state.queues = withDelta(list, prevQueuesByName, (a)=>a.wait); prevQueuesByName = indexByName(list);} catch(e){ console.warn('fetchQueues fail', e); state.queues=[]; }
+    const scoreDpa = v => (v === '販売中') ? 2 : (v === '対象' ? 1 : 0);
+    const scorePp  = v => (v === '発行中') ? 2 : (v === '対象' ? 1 : 0);
+  
+    switch (sortByDpa?.value || 'smart') {
+      case 'name':
+        // 名前順
+        latest.sort((a,b) => a.name.localeCompare(b.name, 'ja'));
+        break;
+  
+      case 'dpa':
+        // DPAが強い順（販売中→対象→その他）→ 名前
+        latest.sort((a,b) =>
+          (scoreDpa(b.dpa_status) - scoreDpa(a.dpa_status)) ||
+          a.name.localeCompare(b.name, 'ja')
+        );
+        break;
+  
+      case 'pp':
+        // PPが強い順（発行中→対象→その他）→ 名前
+        latest.sort((a,b) =>
+          (scorePp(b.pp40_status) - scorePp(a.pp40_status)) ||
+          a.name.localeCompare(b.name, 'ja')
+        );
+        break;
+  
+      case 'recent':
+        // 更新が新しい順
+        latest.sort((a,b) => new Date(b.t) - new Date(a.t));
+        break;
+  
+      default: // 'smart'（既定）：販売/発行中を先頭 → 名前
+        latest.sort((a,b) => {
+          const ka = scoreDpa(a.dpa_status) + scorePp(a.pp40_status);
+          const kb = scoreDpa(b.dpa_status) + scorePp(b.pp40_status);
+          return (kb - ka) || a.name.localeCompare(b.name, 'ja');
+        });
     }
-    async function fetchDpa(){
-      const url = `/.netlify/functions/qt?type=dpa&park=${state.park}`;
-      try { const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`); const data = await r.json(); const list = (Array.isArray(data)?data:[]).map(x=>({ name:x.name||x.title||x.canonical_name||'—', dpa:x.dpa_status||x.dpa||x.dpa_flag||'記載なし', pp:x.pp40_status||x.pp||x.pp_flag||'記載なし', href:x.url||x.href||'#', labels:x.labels||[] })); state.dpa = withDelta(list, prevDpaByName, (a)=>`${a.dpa}|${a.pp}`); prevDpaByName = indexByName(list);} catch(e){ console.warn('fetchDpa fail', e); state.dpa=[]; }
-    }
-
-    // Supabase 履歴
-    async function fetchHistory(filterName){
-      try { await ensureEnv(); const limit = 600; let url = `${ENV.SUPABASE_URL}/rest/v1/attraction_status?select=name_raw,dpa_status,pp40_status,fetched_at,park_id&id=gt.0&park_id=eq.${state.park}&order=fetched_at.desc&limit=${limit}`; if (filterName) url += `&name_raw=eq.${encodeURIComponent(filterName)}`; const r = await fetch(url,{ headers:{ 'apikey':ENV.SUPABASE_ANON_KEY, 'Authorization':`Bearer ${ENV.SUPABASE_ANON_KEY}` }}); if(!r.ok) throw new Error('history http '+r.status); const rows = await r.json(); return buildHistory(rows, filterName);} catch(e){ console.warn('history fail', e); return { scope: filterName? `（${filterName}）` : '（全体）', items:[{text:'履歴の取得に失敗しました', t:new Date()}] }; }
-    }
-    function buildHistory(rows, filterName){ const by=new Map(); for(const x of rows){ const key=x.name_raw||'—'; if(!by.has(key)) by.set(key,[]); by.get(key).push(x);} const out=[]; for(const [name,arr] of by){ let prev=null; for(const r of arr){ const cur=`${r.dpa_status||'記載なし'}|${r.pp40_status||'記載なし'}`; if(prev && prev!==cur){ out.push({ name, t:new Date(r.fetched_at||Date.now()), dpa:r.dpa_status||'記載なし', pp:r.pp40_status||'記載なし' }); } prev=cur; } } out.sort((a,b)=>b.t-a.t); const scope=filterName?`（${filterName}）`:'（全体）'; return { scope, items: out.slice(0,120) }; }
-
-    // Renderers
-    function renderSummary(){ const items=applyFilters(state.queues); const waits=items.map(i=>Number(i.wait)).filter(Number.isFinite); const avg=waits.length?Math.round(waits.reduce((a,b)=>a+b,0)/waits.length):'—'; $('#avgWait').textContent = typeof avg==='number'? `${avg}分` : '—'; let level='—'; if(typeof avg==='number') level = avg<=15?'低':avg<=40?'中':'高'; $('#crowdLevel').textContent=level; $('#crowdIndicator').textContent=level; const dpaOn=state.dpa.filter(d=>/販売中|発行中|available|on/i.test(`${d.dpa}`)).length; const ppOn=state.dpa.filter(d=>/発行中|available|on/i.test(`${d.pp}`)).length; $('#dpaCount').textContent=dpaOn; $('#ppCount').textContent=ppOn; if(state.lastFetchAt) $('#lastUpdated').textContent = new Date(state.lastFetchAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}); }
-    function renderInsights(){ const box=$('#insightList'); box.innerHTML=''; const list=[]; const downs=state.queues.filter(q=>Number(q.delta)<0).sort((a,b)=>a.delta-b.delta).slice(0,3); for(const q of downs){ list.push(`🔻 <b>${escapeHtml(q.name)}</b> が <b>${Math.abs(q.delta)}分短縮</b> → 今 ${q.wait??'—'}分`);} const dpaOn=state.dpa.filter(d=>d.delta && /販売中|available|on/i.test(`${d.dpa}`)); for(const d of dpaOn){ list.push(`🟢 <b>${escapeHtml(d.name)}</b> が <b>DPA 販売中</b> に変化`);} const favOn=state.dpa.filter(d=>state.favs.has(d.name) && /販売中|発行中|available|on/i.test(`${d.dpa}|${d.pp}`)); for(const f of favOn){ list.push(`⭐ <b>${escapeHtml(f.name)}</b> – DPA/PP チャンス`);} box.innerHTML = list.length? list.map(t=>`<div class="row" style="border-bottom:1px solid var(--line); padding:6px 0">${t}</div>`).join('') : '<div class="mut">直近の注目変化はありません</div>'; }
-    function renderQueues(){ const list=applyFilters(state.queues); const cards=$('#qtCards'); const tbody=$('#qtTable tbody'); cards.innerHTML=''; tbody.innerHTML=''; for(const a of list){ const waitTxt=a.wait==null?'—':`${a.wait}分`; const status=(a.status||'').toString(); const tagTxt=(a.labels||[]).join(' / '); const delta=Number.isFinite(a.delta)?a.delta:null; const deltaHtml=delta==null?'<span class="mut">—</span>':`<span class="delta ${delta>0?'up':'down'}">${delta>0? '＋'+delta: delta}</span>`; const c=document.createElement('div'); c.className='card'; if(a.changed) c.classList.add('changed'); c.innerHTML = `<div class="row" style="justify-content:space-between"><div class="name">${escapeHtml(a.name)}</div><button class="btn ghost star" aria-label="お気に入り切替">${state.favs.has(a.name)?'⭐':'☆'}</button></div><div class="row" style="gap:12px; align-items:center"><div class="chip"><b>待ち</b> ${waitTxt}</div>${delta!=null? deltaHtml: ''}<div class="chip" style="background:rgba(245,158,11,.12); border-color:rgba(245,158,11,.35)"><b>状態</b> ${escapeHtml(status)}</div></div><div class="meta">${escapeHtml(tagTxt)}</div><div class="row" style="margin-top:8px"><a class="btn" href="${a.href}" target="_blank" rel="noopener">詳細</a></div>`; c.querySelector('.star').addEventListener('click',()=>toggleFav(a.name)); cards.appendChild(c); const tr=document.createElement('tr'); tr.innerHTML = `<td>${escapeHtml(a.name)}</td><td>${waitTxt}</td><td>${deltaHtml}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(tagTxt)}</td><td><button class="btn star">${state.favs.has(a.name)?'⭐':'☆'}</button></td>`; tr.querySelector('.star').addEventListener('click',()=>toggleFav(a.name)); tbody.appendChild(tr);} renderFavQuick(); }
-    function renderDpa(){ const list=$('#dpaList'); list.innerHTML=''; for(const d of state.dpa){ const badgeD = (/販売中|available|on/i.test(`${d.dpa}`))? `<span class="badge" style="border-color:rgba(16,185,129,.5)">DPA: 販売中</span>`:`<span class="badge">DPA: ${escapeHtml(d.dpa||'—')}</span>`; const badgeP = (/発行中|available|on/i.test(`${d.pp}`))? `<span class="badge" style="border-color:rgba(16,185,129,.5)">PP: 発行中</span>`:`<span class="badge">PP: ${escapeHtml(d.pp||'—')}</span>`; const deltaHtml = d.delta? `<span class="delta ${/販売中|on/i.test(`${d.dpa}`)?'up':'down'}">変化</span>`:'<span class="mut">—</span>'; const el=document.createElement('div'); el.className='card'; if(d.changed) el.classList.add('changed'); el.innerHTML = `<div class="row" style="justify-content:space-between"><div class="name">${escapeHtml(d.name)}</div><div class="row"><button class="btn ghost hist">履歴</button><button class="btn ghost star">${state.favs.has(d.name)?'⭐':'☆'}</button></div></div><div class="row" style="gap:8px; align-items:center">${badgeD} ${badgeP} ${deltaHtml}</div><div class="meta">${escapeHtml((d.labels||[]).join(' / '))}</div><div class="row" style="margin-top:8px"><a class="btn" href="${d.href}" target="_blank" rel="noopener">詳細</a></div>`; el.querySelector('.star').addEventListener('click',()=>toggleFav(d.name)); el.querySelector('.hist').addEventListener('click',()=>openHistoryFor(d.name)); list.appendChild(el);} }
-    function renderTimeline(){ const tl=$('#tlList'); tl.innerHTML=''; const changes=[]; for(const q of state.queues){ if(Number.isFinite(q.delta)&&q.delta!==0) changes.push({ t:new Date(), text:`${q.name} 待ち ${q.delta>0?'+':''}${q.delta}分 → ${q.wait??'—'}分`}); } for(const d of state.dpa){ if(d.delta) changes.push({ t:new Date(), text:`${d.name} DPA/PP 状態変化`}); } if(!changes.length){ tl.innerHTML='<div class="mut">直近の変化はありません</div>'; return;} for(const it of changes.slice(0,12)){ const row=document.createElement('div'); row.className='row'; row.style.justifyContent='space-between'; row.style.borderBottom='1px solid var(--line)'; row.style.padding='6px 0'; row.innerHTML=`<div>${escapeHtml(it.text)}</div><div class="mut" style="font-size:12px">${fmtTime(it.t)}</div>`; tl.appendChild(row);} }
-    function renderFavQuick(){ const wrap=$('#favsQuick'); const chips=$('#favChips'); chips.innerHTML=''; const favArr=Array.from(state.favs); wrap.style.display = favArr.length?'block':'none'; for(const name of favArr){ const b=document.createElement('button'); b.className='pill'; b.textContent=`⭐ ${name}`; b.addEventListener('click',()=>{ $('#searchInput').value=name; state.filters.q=name; applyAndRender(); }); chips.appendChild(b);} }
-    function renderFavList(){ const list=$('#favList'); list.innerHTML=''; for(const name of Array.from(state.favs)){ const row=document.createElement('div'); row.className='row'; row.style.justifyContent='space-between'; row.style.borderBottom='1px solid var(--line)'; row.style.padding='6px 0'; row.innerHTML=`<div class="name">${escapeHtml(name)}</div><div class="row"><button class="btn ghost del">削除</button><button class="btn ghost hist">履歴</button></div>`; row.querySelector('.del').addEventListener('click',()=>toggleFav(name)); row.querySelector('.hist').addEventListener('click',()=>openHistoryFor(name)); list.appendChild(row);} }
-
-    // Filters
-    function applyFilters(items){ let out=items; const q=state.filters.q.trim(); if(q) out = out.filter(i=> `${i.name} ${(i.labels||[]).join(' ')}`.toLowerCase().includes(q.toLowerCase())); if(state.filters.fast) out = out.filter(i=> Number(i.wait) <= 20); if(state.filters.down) out = out.filter(i=> /休止|運営中止|運営一時停止|closed|down/i.test(`${i.status}`)); if(state.filters.favs) out = out.filter(i=> state.favs.has(i.name)); if(state.filters.dpa || state.filters.pp){ const map=new Map(state.dpa.map(d=>[d.name,d])); out = out.filter(i=>{ const m = map.get(i.name); const dOn = m && /販売中|available|on/i.test(`${m.dpa}`); const pOn = m && /発行中|available|on/i.test(`${m.pp}`); return (state.filters.dpa? dOn:true) && (state.filters.pp? pOn:true); }); } return out; }
-    function applyAndRender(){ renderQueues(); renderSummary(); renderInsights(); }
-
-    // Notifications
-    async function fetchQuietHours(){ try { const r = await fetch('/.netlify/functions/notify-all'); const j = await r.json().catch(()=>({})); if (j && typeof j.muted !== 'undefined') { $('#quietHoursHint').textContent = j.muted? '静音時間（22:00〜07:59）中：force=1で強制送信可' : '現在は送信可能時間帯です'; } } catch {}
-    }
-    async function sendTestNotify(){ try { const r = await fetch('/.netlify/functions/notify-all?force=1'); const j = await r.json().catch(()=>({})); alert('テスト通知を実行しました\n' + JSON.stringify(j)); } catch (e) { alert('テスト通知に失敗: '+(e?.message||e)); } }
-    async function fetchNotifLogs(){ try { await ensureEnv(); const url = `${ENV.SUPABASE_URL}/rest/v1/notifications?select=*&order=id.desc&limit=20`; const r = await fetch(url, { headers: { 'apikey': ENV.SUPABASE_ANON_KEY, 'Authorization': `Bearer ${ENV.SUPABASE_ANON_KEY}` }}); const arr = await r.json(); const list=$('#notifList'); list.innerHTML=''; (Array.isArray(arr)?arr:[]).forEach(n=>{ const t=new Date(n.created_at||n.inserted_at||Date.now()); const row=document.createElement('div'); row.className='row'; row.style.justifyContent='space-between'; row.style.borderBottom='1px solid var(--line)'; row.style.padding='6px 0'; row.innerHTML=`<div><b>${escapeHtml(n.title||'-')}</b><div class="mut" style="font-size:12px">${escapeHtml(n.body||'')}</div></div><div class="mut" style="font-size:12px">${t.toLocaleString('ja-JP')}</div>`; list.appendChild(row); }); } catch(e){ $('#notifList').textContent='履歴の取得に失敗しました'; } }
-
-    // Favorites & Schedule
-    function toggleFav(name){ if(state.favs.has(name)) state.favs.delete(name); else state.favs.add(name); localStorage.setItem('favs', JSON.stringify(Array.from(state.favs))); applyAndRender(); renderDpa(); renderFavList(); }
-    function saveSchedule(){ localStorage.setItem('schedule', JSON.stringify(state.schedule)); }
-    function moveSchedule(from,to){ if(from===to) return; const [x]=state.schedule.splice(from,1); state.schedule.splice(to,0,x); saveSchedule(); renderSchedule(); }
-
-    // Pull to refresh + visibility
-    let startY=null, pulling=false; document.addEventListener('touchstart', e=>{ startY = e.touches?.[0]?.clientY ?? 0; pulling=false; }, {passive:true}); document.addEventListener('touchmove', e=>{ if (window.scrollY>0 || startY==null) return; const dy=(e.touches?.[0]?.clientY ?? 0)-startY; if (dy>20){ pulling=true; $('#pullRefresh').classList.add('show'); } }, {passive:true}); document.addEventListener('touchend', async ()=>{ if(!pulling){ $('#pullRefresh').classList.remove('show'); return; } $('#pullRefresh').querySelector('.badge').textContent='更新中...'; try{ await refreshAll(); } finally { await sleep(300); $('#pullRefresh').classList.remove('show'); $('#pullRefresh').querySelector('.badge').textContent='下に引っ張って更新'; } }, {passive:true}); document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ refreshAll(); } });
-
-    // Auto Refresh
-    initAutoRefresh();
-    function initAutoRefresh(){ setAutoSec(state.autoSec); $('#autoOff').addEventListener('click',()=>setAutoSec(0)); $('#auto15').addEventListener('click',()=>setAutoSec(15)); $('#auto30').addEventListener('click',()=>setAutoSec(30)); $('#auto60').addEventListener('click',()=>setAutoSec(60)); }
-    function setAutoSec(sec){ state.autoSec = sec; localStorage.setItem('autoSec', String(sec)); ['autoOff','auto15','auto30','auto60'].forEach(id=>{ const btn=$('#'+id); const s=+btn.dataset.sec||0; btn.classList.toggle('active', s===sec); btn.setAttribute('aria-pressed', String(s===sec)); }); if(autoTimer) clearInterval(autoTimer); if(sec>0){ autoRemain=sec; $('#autoCountdown').textContent = autoRemain+'s'; autoTimer=setInterval(()=>{ if(document.hidden) return; autoRemain--; if(autoRemain<=0){ autoRemain=sec; refreshAll(); } $('#autoCountdown').textContent = autoRemain+'s'; }, 1000);} else { $('#autoCountdown').textContent='—'; } }
-
-    // Events
-    $('#btnRefresh').addEventListener('click', refreshAll);
-    $('#btnFetchDpa').addEventListener('click', async ()=>{ await fetchDpa(); renderDpa(); renderSummary(); renderInsights(); });
-    $('#btnCopyOn').addEventListener('click', copyCurrentOn);
-    $('#btnHistoryAll').addEventListener('click', async ()=>{ await openHistoryFor(); });
-    $('#btnHistoryClose').addEventListener('click', closeHistory);
-    $('#histFavsOnly').addEventListener('click', ()=>{ const on = !($('#histFavsOnly').getAttribute('aria-pressed')==='true'); $('#histFavsOnly').setAttribute('aria-pressed', String(on)); $('#histFavsOnly').classList.toggle('active', on); refreshHistoryLast(); });
-
-    $('#parkTDL').addEventListener('click',()=>switchPark(274));
-    $('#parkTDS').addEventListener('click',()=>switchPark(275));
-    $('#viewCards').addEventListener('click',()=>switchView('cards'));
-    $('#viewTable').addEventListener('click',()=>switchView('table'));
-    $('#searchInput').addEventListener('input', e=>{ state.filters.q = e.target.value; applyAndRender(); });
-
-    $('#fltFast').addEventListener('click', e=>toggleBtn(e,'fast'));
-    $('#fltDPA').addEventListener('click', e=>toggleBtn(e,'dpa'));
-    $('#fltPP').addEventListener('click',  e=>toggleBtn(e,'pp'));
-    $('#fltDown').addEventListener('click',e=>toggleBtn(e,'down'));
-    $('#fltFavs').addEventListener('click',e=>toggleBtn(e,'favs'));
-    $('#btnClear').addEventListener('click',()=>{ state.filters={fast:false,dpa:false,pp:false,down:false,favs:false,q:''}; $$('#controls .btn').forEach(b=>b.classList.remove('active')); $('#searchInput').value=''; applyAndRender(); });
-
-    $('#btnFavExport').addEventListener('click',()=>{ const txt=Array.from(state.favs).join('\n'); navigator.clipboard?.writeText(txt); alert('お気に入りをクリップボードへ書き出しました'); });
-    $('#btnFavImport').addEventListener('click',()=>{ const txt=prompt('お気に入りを改行区切りで貼り付け'); if(!txt) return; txt.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>state.favs.add(n)); localStorage.setItem('favs', JSON.stringify(Array.from(state.favs))); renderFavQuick(); renderFavList(); applyAndRender(); });
-
-    $('#schAdd').addEventListener('click',()=>{ const v=$('#schInput').value.trim(); if(!v) return; state.schedule.push(v); $('#schInput').value=''; saveSchedule(); renderSchedule(); });
-    $('#schClear').addEventListener('click',()=>{ if(confirm('予定を全消去しますか？')){ state.schedule=[]; saveSchedule(); renderSchedule(); }});
-
-    $('#btnTestNotify').addEventListener('click', sendTestNotify);
-    $('#btnFetchNotifs').addEventListener('click', fetchNotifLogs);
-
-    $$('.bottom .nav-item').forEach(btn=>btn.addEventListener('click',()=>{ const m={qt:'#qtAnchor', dpa:'#dpaAnchor', favs:'#favsAnchor', schedule:'#scheduleAnchor', insight:'#insight'}; const el=$(m[btn.dataset.target]); if(!el) return; window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 56, behavior:'smooth' }); $$('.bottom .nav-item').forEach(b=>b.classList.toggle('active', b===btn)); }));
-
-    $('#btnShare').addEventListener('click', shareState);
-
-    (async function init(){ try{ const h=location.hash; const m=h.match(/#S=([^&]+)/); if(m){ const json=atob(decodeURIComponent(m[1])); const obj=JSON.parse(json); restoreState(obj); } }catch{} await ensureEnv(); await refreshAll(); renderSchedule(); fetchQuietHours(); })();
-
-    async function refreshAll(){ await Promise.all([fetchQueues(), fetchDpa()]); state.lastFetchAt=Date.now(); renderQueues(); renderDpa(); renderSummary(); renderInsights(); renderTimeline(); renderFavList(); }
-    function switchPark(id){ state.park=id; $('#parkTDL').classList.toggle('active', id===274); $('#parkTDS').classList.toggle('active', id===275); refreshAll(); }
-    function switchView(v){ state.view=v; $('#viewCards').classList.toggle('active', v==='cards'); $('#viewTable').classList.toggle('active', v==='table'); $('#qtCards').style.display = v==='cards'?'grid':'none'; $('#qtTableWrap').style.display = v==='table'?'block':'none'; }
-    function toggleBtn(e,key){ const b=e.currentTarget; const on=!b.classList.contains('active'); b.classList.toggle('active', on); state.filters[key]=on; applyAndRender(); }
-
-    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
-    function fmtTime(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getHours()}:${p(d.getMinutes())}`; }
-    function indexByName(list){ const m={}; for(const it of list){ m[it.name]=it; } return m; }
-    function withDelta(list, prevMap, valFn){ return list.map(it=>{ const prev=prevMap[it.name]; let delta=null, changed=false; if(prev){ const a=valFn(it); const b=valFn(prev); if(a!=null && b!=null && a!=='' && b!=='' && a!==b){ if(typeof a==='number' && typeof b==='number') delta=a-b; else delta=1; changed=true; } } return {...it, delta, changed}; }); }
-
-    async function shareState(){ const snapshot={ park:state.park, view:state.view, filters:state.filters, favs:Array.from(state.favs), theme:state.theme, density:state.density, contrast:state.contrast, autoSec:state.autoSec }; const encoded=encodeURIComponent(btoa(JSON.stringify(snapshot))); const url=location.origin+location.pathname+'#S='+encoded; try{ if(navigator.share) await navigator.share({ title:'TDR Now', url }); else { await navigator.clipboard.writeText(url); alert('共有URLをコピーしました'); } }catch{} }
-    function restoreState(obj){ try{ if(obj.park) state.park=obj.park; if(obj.view) switchView(obj.view); if(obj.filters) state.filters={...state.filters, ...obj.filters}; if(Array.isArray(obj.favs)) state.favs=new Set(obj.favs); if(obj.theme) setTheme(obj.theme); if(obj.density) setDensity(obj.density); if(obj.contrast) setContrast(obj.contrast); if(typeof obj.autoSec==='number') setAutoSec(obj.autoSec); }catch{} if(state.filters.fast) $('#fltFast').classList.add('active'); if(state.filters.dpa) $('#fltDPA').classList.add('active'); if(state.filters.pp) $('#fltPP').classList.add('active'); if(state.filters.down) $('#fltDown').classList.add('active'); if(state.filters.favs) $('#fltFavs').classList.add('active'); }
-
-    // 履歴 UI
-    let lastHistory=null, lastFilterName=null; async function openHistoryFor(name){ lastFilterName=name||null; $('#histScope').textContent = name? `（${name}）` : '（全体）'; $('#historySheet').style.display='flex'; await refreshHistoryLast(); }
-    async function refreshHistoryLast(){ const favsOnly = $('#histFavsOnly').getAttribute('aria-pressed')==='true'; const data = await fetchHistory(lastFilterName); lastHistory=data; const list=$('#histList'); list.innerHTML=''; const items = favsOnly? data.items.filter(x=>state.favs.has(x.name)) : data.items; if(!items.length){ list.innerHTML='<div class="mut">履歴がありません</div>'; return; } for(const ev of items){ const row=document.createElement('div'); row.className='row'; row.style.justifyContent='space-between'; row.style.borderBottom='1px solid var(--line)'; row.style.padding='6px 0'; const desc=`【${escapeHtml(ev.name)}】 DPA:${escapeHtml(ev.dpa)} / PP:${escapeHtml(ev.pp)}`; row.innerHTML = `<div>${desc}</div><div class="mut" style="font-size:12px">${ev.t.toLocaleString('ja-JP')}</div>`; list.appendChild(row);} }
-    function closeHistory(){ $('#historySheet').style.display='none'; }
-
-    function copyCurrentOn(){ const ons=state.dpa.filter(d=>/販売中|発行中|available|on/i.test(`${d.dpa}|${d.pp}`)).map(d=>`・${d.name} [DPA:${d.dpa} / PP:${d.pp}]`); const txt=ons.join('\n') || '（現在ONはありません）'; navigator.clipboard?.writeText(txt); alert('現在ONの一覧をコピーしました'); }
-
   })();
-  </script>
+
+  // フィルタ（お気に入り/販売中のみ 等）
+  const favSet = new Set(state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa));
+  const filtered = latest.filter(r=>{
+    // お気に入りのみ
+    if (fFavOnlyDpa?.checked && !favSet.has(r.name)) return false;
+    // DPA販売中のみ
+    if (fDpaOnSale?.checked && r.dpa_status!=='販売中') return false;
+    // PP発行中のみ
+    if (fPpOnSale?.checked && !(r.pp40_status==='発行中' || r.pp40_status==='対象')) return false;
+    // すべて表示 OFF のときは「DPA=記載なし AND PP=記載なし」を隠す
+    if (!fShowAllDpa?.checked) {
+      const dpaNone = !r.dpa_status || r.dpa_status==='記載なし';
+      const ppNone  = !r.pp40_status || r.pp40_status==='記載なし';
+      if (dpaNone && ppNone) return false;
+    }
+    return true;
+  });
+
+  // 共通：色クラス
+  const clsDpa = s => s==='販売中' ? 'good' : (s==='販売終了' ? 'bad' : (s==='対象' ? 'warn' : ''));
+  const clsPp  = s => s==='発行中' ? 'good' : (s==='発行終了' ? 'bad' : (s==='対象' ? 'warn' : ''));
+
+  // テーブル（PC向け）
+  const tbl = el('table',{'data-hscroll':'1','data-sticky-first':'1'},[
+    el('thead',{},el('tr',{},[
+      el('th',{},'施設'), el('th',{},'DPA'), el('th',{},'PP'), el('th',{},'更新')
+    ])),
+    el('tbody',{}, filtered.map(r=> el('tr',{},[
+      el('td',{}, r.name),
+      el('td',{}, el('span',{class:'tag dpa '+clsDpa(r.dpa_status)}, r.dpa_status||'-')),
+      el('td',{}, el('span',{class:'tag pp '+clsPp(r.pp40_status)}, r.pp40_status||'-')),
+      el('td',{}, new Date(r.t).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))
+    ])))
+  ]);
+
+  // カード（スマホ向け）
+  const cardsWrap = el('div',{class:'dpa-cards'},
+    filtered.map(r=> el('div',{class:'dpa-card'},[
+      el('div',{},[
+        el('div',{class:'title'}, r.name),
+        el('div',{class:'badges'},[
+          el('span',{class:'tag dpa '+clsDpa(r.dpa_status)}, 'DPA: ' + (r.dpa_status||'-')),
+          el('span',{class:'tag pp  '+clsPp(r.pp40_status)}, 'PP: ' + (r.pp40_status||'-')),
+        ]),
+        el('div',{class:'when'}, new Date(r.t).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))
+      ])
+    ]))
+  );
+
+  // 出力
+  dpaDiv.innerHTML='';
+  dpaDiv.appendChild(tbl);
+  dpaDiv.appendChild(cardsWrap);
+  enableHScroll(dpaDiv);
+  
+  // 更新ラベル
+  const latestDpaTs = latest.length ? latest.reduce((mx,r)=> (mx && new Date(mx)>new Date(r.t)? mx : r.t), latest[0].t) : null;
+  setUpdated(document.getElementById('dpaUpdated'), latestDpaTs, 10);
+}
+
+// Favorites and presets
+async function toggleFav(raw){
+  const parkId=parseInt(parkSel.value,10);
+  const { data:{user} }=await supabase.auth.getUser();
+
+  // 先にローカルを更新（オフラインでも効く）
+  if(state.favorites.has(raw)) state.favorites.delete(raw); else state.favorites.add(raw);
+  LS.writeFavs(parkId, state.favorites);
+
+  // ログイン中だけサーバにも反映（失敗してもUIは維持）
+  if(user){
+    try{
+      if(state.favorites.has(raw)){
+        const { error } = await supabase.from('user_favorites').upsert({ user_id:user.id, park_id:parkId, attraction_name:raw });
+        if (error) console.warn(error);
+      }else{
+        const { error } = await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId, attraction_name:raw });
+        if (error) console.warn(error);
+      }
+    }catch(e){ console.warn(e); }
+  }
+
+  renderFavs(); renderQT(); renderCountsEditor(); renderNowTips(); renderFavoritesQuick();
+}
+
+async function loadFavs(){
+  const parkId=parseInt(parkSel.value,10);
+  const { data:{user} }=await supabase.auth.getUser();
+
+  // まずローカルから
+  const local = LS.readFavs(parkId);
+  state.favorites = new Set(local);
+
+  // ログイン中ならサーバの内容とマージ（サーバ優先）
+  if(user){
+    const { data } = await supabase.from('user_favorites').select('*').match({ user_id:user.id, park_id:parkId });
+    for(const r of (data||[])) state.favorites.add(r.attraction_name);
+  }
+
+  // 画面反映 & ローカルへ同期保存（ログイン時もローカルを最新に）
+  LS.writeFavs(parkId, state.favorites);
+  renderFavs(); renderCountsEditor(); renderFavoritesQuick();
+}
+
+function renderFavs(){
+  const names = state.qt.filter(x=>state.favorites.has(x.nameRaw)).map(x=>x.nameJa);
+  document.getElementById('favs').textContent = names.length ? 'お気に入り：'+names.join('、') : '★をクリックするとお気に入りに追加/解除できます。';
+}
+
+document.getElementById('btnSavePreset').onclick = async () => {
+  const { data:{ user } } = await supabase.auth.getUser();
+  if (!user) return alert('ログインしてください');
+  const name = (presetName.value || '').trim();
+  if (!name) return alert('プリセット名を入力');
+  const items = Array.from(state.favorites.values());
+  const row = { user_id: user.id, park_id: parseInt(parkSel.value,10), name, items };
+  const { error } = await supabase.from('user_fav_presets').insert(row);
+  if (error) return alert('保存に失敗: ' + error.message);
+  alert('保存しました'); presetName.value=''; await loadPresets();
+};
+
+async function loadPresets(){
+  const { data:{ user } } = await supabase.auth.getUser();
+  const sel = document.getElementById('presetSelect');
+  sel.innerHTML = '';
+  if (!user) return;
+  const { data } = await supabase.from('user_fav_presets').select('id,name,created_at').eq('user_id', user.id).eq('park_id', parseInt(parkSel.value,10)).order('created_at', { ascending:false });
+  for (const p of (data||[])) { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; sel.appendChild(opt); }
+}
+
+document.getElementById('btnLoadPreset').onclick = async () => {
+  const { data:{ user } } = await supabase.auth.getUser();
+  if (!user) return alert('ログインしてください');
+  const sel = document.getElementById('presetSelect');
+  const id = Number(sel.value || 0);
+  if (!id) return alert('プリセットを選択');
+  const { data: p, error } = await supabase.from('user_fav_presets').select('*').eq('id', id).single();
+  if (error || !p) return alert('読み込みに失敗しました');
+  const parkId = parseInt(parkSel.value,10);
+  await supabase.from('user_favorites').delete().match({ user_id:user.id, park_id:parkId });
+  const rows = (p.items||[]).map(nameRaw => ({ user_id:user.id, park_id:parkId, attraction_name:nameRaw }));
+  if (rows.length) await supabase.from('user_favorites').insert(rows);
+  state.favorites = new Set(p.items||[]);
+  renderFavs(); renderQT(); renderCountsEditor(); renderNowTips(); renderFavoritesQuick();
+  alert('プリセットを適用しました');
+};
+
+async function loadRules(){
+  const parkId = parseInt(parkSel.value,10);
+  const { data:{user} }=await supabase.auth.getUser();
+
+  // ローカル優先で読み込み（あればそれをUIに）
+  const local = LS.readRules(parkId);
+  if(local){
+    rCloseReopen.checked = !!local.notify_close_reopen;
+    rDpaSale.checked     = !!local.notify_dpa_sale;
+    rSpike.value         = local.spike_threshold ?? 20;
+    rWindow.value        = local.window_minutes ?? 10;
+    if(!user) return; // 未ログインならここで終わり
+  }
+
+  // ログイン中はサーバから取得してUI更新。ローカルにも反映
+  if(user){
+    const { data } = await supabase.from('user_alert_rules').select('*')
+      .eq('user_id',user.id).eq('park_id',parkId).maybeSingle();
+    const r = data || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
+    rCloseReopen.checked = !!r.notify_close_reopen;
+    rDpaSale.checked     = !!r.notify_dpa_sale;
+    rSpike.value         = r.spike_threshold;
+    rWindow.value        = r.window_minutes;
+    LS.writeRules(parkId, r);
+  }
+}
+
+document.getElementById('btnSaveRules').onclick=async()=>{
+  const parkId = parseInt(parkSel.value,10);
+  const { data:{user} }=await supabase.auth.getUser();
+  const row = {
+    notify_close_reopen:rCloseReopen.checked,
+    notify_dpa_sale:rDpaSale.checked,
+    spike_threshold:Number(rSpike.value||20),
+    window_minutes:Number(rWindow.value||10)
+  };
+
+  // 常にローカル保存
+  LS.writeRules(parkId, row);
+
+  // ログイン中のみサーバにも保存
+  if(user){
+    await supabase.from('user_alert_rules').upsert({ user_id:user.id, park_id:parkId, ...row },{ onConflict:'user_id,park_id' });
+  }
+
+  alert('保存しました');
+};
+
+
+async function loadPurchases(){
+  const { data:{user} }=await supabase.auth.getUser();
+  if(!user){ document.getElementById('purchases').innerHTML=''; state.fixedAuto=[]; return; }
+  const { data } = await supabase.from('dpa_purchases').select('*').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).order('slot_start');
+  state.purchases=data||[]; renderPurchases(); renderEvents(); showAutoScheduleLinkForToday();
+  state.fixedAuto = (data||[]).map(p => ({ name:p.attraction_name, start:new Date(p.slot_start), dur:Math.max(1, Math.round((new Date(p.slot_end)-new Date(p.slot_start))/60000)), method:'DPA' }));
+}
+  
+// JSTのHH:MMで安全に表示（null/未パース対策・スペース区切りISO対策）
+function fmtJST_HM(ts){
+  if (!ts) return '-';
+  const iso = typeof ts === 'string' ? ts.replace(' ', 'T') : ts;
+  const d = new Date(iso);
+  if (isNaN(d)) return '-';
+  return d.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo', hour12: false, hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function renderPurchases(){
+  const box = document.getElementById('purchases');
+  box.innerHTML = '';
+
+  const rows = (state.purchases || []);
+
+  const tbl = el('table', {'data-hscroll':'1','data-sticky-first':'1'}, [
+    el('thead', {}, el('tr', {}, [
+      el('th', {}, '施設'),
+      el('th', {}, '時間帯'),
+      el('th', {}, 'カウントダウン'),
+      el('th', {}, '枚数'),
+      el('th', {}, 'メモ'),
+      el('th', {}, '状態'),
+      el('th', {}, '操作'),
+    ])),
+    el('tbody', {}, rows.map(p => el('tr', {}, [
+      el('td', {}, p.attraction_name || '-'),
+      el('td', {}, `${fmtJST_HM(p.slot_start)}〜${fmtJST_HM(p.slot_end)}`),
+      el('td', {}, el('span', { class: 'dpa-countdown' }, getTimeUntil(p.slot_start))),
+      el('td', {}, String(p.quantity ?? '-')),
+      el('td', {}, p.note || ''),
+      el('td', {}, p.used ? '使用済' : '未使用'),
+      el('td', {}, el('button', {
+        onclick: async () => {
+          await supabase.from('dpa_purchases')
+            .update({ used: !p.used })
+            .eq('id', p.id);
+          await loadPurchases();
+        }
+      }, p.used ? '未使用に戻す' : '使用済にする'))
+    ])))
+  ]);
+
+  box.appendChild(tbl);
+  enableHScroll(box);
+}
+
+
+document.getElementById('btnAddPurchase').onclick=async()=>{
+  const { data:{user} }=await supabase.auth.getUser(); 
+  if(!user) return alert('ログインしてください');
+  const row={ 
+    user_id:user.id, 
+    park_id:parseInt(parkSel.value,10), 
+    attraction_name:buyName.value, 
+    slot_start:new Date(buyStart.value).toISOString(), 
+    slot_end:new Date(buyEnd.value).toISOString(), 
+    quantity:Number(buyQty.value||1), 
+    note:buyNote.value||'' 
+  };
+  if(!row.attraction_name||!row.slot_start||!row.slot_end) return alert('値を確認してください');
+  await supabase.from('dpa_purchases').insert(row);
+  state.fixedAuto.push({ 
+    name: row.attraction_name,
+    start: new Date(buyStart.value), 
+    dur: Math.max(1, Math.round((new Date(buyEnd.value)-new Date(buyStart.value))/60000)), 
+    method:'DPA' 
+  });
+  renderEvents();
+  await addPurchaseToAutoSchedule(row);
+  buyName.value=''; 
+  buyNote.value=''; 
+  await loadPurchases();
+  alert('登録しました（自動スケジュールにも追加済み）');
+};
+
+async function addPurchaseToAutoSchedule(purchaseRow){
+  const { data:{user} }=await supabase.auth.getUser(); if(!user) return;
+  const parkId = purchaseRow.park_id;
+  const start = new Date(purchaseRow.slot_start);
+  const end = new Date(purchaseRow.slot_end);
+  const dateStr = start.toISOString().slice(0,10);
+  const schedName = '自動スケジュール ' + dateStr;
+  let { data:sch } = await supabase.from('user_schedules').select('id,share_token,name').eq('user_id',user.id).eq('park_id',parkId).eq('name',schedName).maybeSingle();
+  if(!sch){
+    const ins = await supabase.from('user_schedules').insert({ user_id:user.id, park_id:parkId, name:schedName }).select('id,share_token,name').single();
+    if (ins.error) { console.warn(ins.error); return; }
+    sch = ins.data;
+  }
+  const { data:dup } = await supabase.from('user_schedule_items').select('id').eq('schedule_id',sch.id).eq('attraction_name', purchaseRow.attraction_name).eq('method','DPA').eq('planned_time', start.toISOString()).limit(1);
+  if (!dup?.length){
+    await supabase.from('user_schedule_items').insert({
+      schedule_id: sch.id, order_no: 9999, attraction_name: purchaseRow.attraction_name, method: 'DPA',
+      planned_time: start.toISOString(), duration_min: Math.max(1, Math.round((end-start)/60000)), area: 'イベント'
+    });
+    const { data:items } = await supabase.from('user_schedule_items').select('id,planned_time').eq('schedule_id', sch.id).order('planned_time');
+    let idx=1; for (const it of (items||[])) { await supabase.from('user_schedule_items').update({ order_no: idx++ }).eq('id', it.id); }
+  }
+  const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token);
+  autoSchedLink.innerHTML = '今日の自動スケジュール： <a href="' + url.toString() + '">' + url.toString() + '</a>';
+}
+
+async function showAutoScheduleLinkForToday(){
+  const { data:{user} }=await supabase.auth.getUser(); if(!user){ autoSchedLink.textContent=''; return; }
+  const dateStr = new Date().toISOString().slice(0,10);
+  const schedName = '自動スケジュール ' + dateStr;
+  const { data:sch } = await supabase.from('user_schedules').select('id,share_token').eq('user_id',user.id).eq('park_id',parseInt(parkSel.value,10)).eq('name',schedName).maybeSingle();
+  if (sch){ const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token); autoSchedLink.innerHTML = '今日の自動スケジュール： <a href="' + url.toString() + '">' + url.toString() + '</a>'; }
+  else { autoSchedLink.textContent = ''; }
+}
+
+function renderEvents(){
+  const wrap=eventsList; wrap.innerHTML='';
+  const sec = (title, arr, deletable) => {
+    const container = el('div',{});          // ← ラップ用に一度変数へ
+    container.appendChild(el('h4',{},title));
+  
+    if (!arr.length) {
+      container.appendChild(el('div',{class:'mut'},'なし'));
+      return container;
+    }
+  
+    const tbl = el('table', {'data-hscroll':'1','data-sticky-first':'1'}, [
+      el('thead',{}, el('tr',{},[ el('th',{},'種別'), el('th',{},'名称'), el('th',{},'開始'),
+                                  el('th',{},'所要'), el('th',{},'操作') ])),
+      el('tbody',{}, arr.slice().sort((a,b)=>a.start-b.start).map((e,i)=> el('tr',{},[
+        el('td',{}, e.method), el('td',{}, e.name),
+        el('td',{}, e.start.toLocaleString()), el('td',{}, e.dur + '分'),
+        el('td',{}, deletable ? el('button',{onclick:()=>{ arr.splice(i,1); renderEvents(); }},'削除')
+                               : el('span',{class:'mut'},'—'))
+      ])))
+    ]);
+  
+    container.appendChild(tbl);
+    enableHScroll(container);                // ← 横スクロールを適用
+    return container;
+  };
+  wrap.appendChild(sec('DPA購入（自動反映）', state.fixedAuto, false));
+  wrap.appendChild(sec('固定イベント（手動）', state.fixedManual, true));
+}
+
+btnAddEvent.onclick = () => {
+  if (!evName.value || !evStart.value) return alert('名称と開始時刻を入力');
+  state.fixedManual.push({ 
+    name: evName.value, 
+    start: new Date(evStart.value), 
+    dur: Number(evDur.value || 30), 
+    method: 'イベント' 
+  });
+  evName.value = ''; evStart.value = ''; evDur.value = '30';
+  renderEvents();
+};
+
+function optimizeByArea(list){
+  const out=[]; let curArea=null; const pool=list.slice(0);
+  while(pool.length){
+    const i = pool.findIndex(x=> areaOf(x.nameJa)===curArea);
+    const pick = i>=0 ? pool.splice(i,1)[0] : pool.shift();
+    out.push(pick); curArea = areaOf(pick.nameJa);
+  }
+  return out;
+}
+
+document.getElementById('btnPlan').onclick=async()=>{
+  const { data:{user} }=await supabase.auth.getUser(); if(!user) return alert('ログインしてください');
+  const start = document.getElementById('startTime').value || '09:00';
+  const walk = Number(document.getElementById('walk').value||10);
+  const today = new Date().toISOString().slice(0,10);
+  const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
+  let tasks=[]; for(const r of favs){ const n = Number(document.getElementById('count-' + r.nameRaw)?.value||0); for(let i=0;i<n;i++) tasks.push(r); }
+  const fixed = [...state.fixedAuto, ...state.fixedManual].map(e => ({ ...e, end: new Date(e.start.getTime() + e.dur*60000) })).sort((a,b)=> a.start - b.start);
+  if(!tasks.length && !fixed.length) return alert('回数指定や固定イベントがありません');
+  const dpaTargets = new Set(tasks.slice().sort((a,b)=>(b.wait||0)-(a.wait||0)).slice(0, Math.ceil(tasks.length/2)).map(x=>x.nameRaw));
+  let cursor = new Date(today + 'T' + start + ':00');
+  const steps = [];
+  function bumpPastFixed(cur, durMin){
+    let cur2 = new Date(cur);
+    while(true){
+      const hit = fixed.find(f => cur2 < f.end && new Date(cur2.getTime()+durMin*60000) > f.start);
+      if(!hit) return cur2;
+      cur2 = new Date(hit.end.getTime() + walk*60000);
+    }
+  }
+  tasks = optimizeByArea(tasks);
+  for(const t of tasks){
+    const useDpa = dpaTargets.has(t.nameRaw);
+    const dur = useDpa ? 20 : (t.wait||20);
+    cursor = bumpPastFixed(cursor, dur);
+    steps.push({ name:t.nameJa, raw:t.nameRaw, method: useDpa?'DPA':'Standby', at:new Date(cursor), dur, area: areaOf(t.nameJa) });
+    cursor = new Date(cursor.getTime() + (dur+walk)*60000);
+  }
+  const fixSteps = fixed.map(f => ({ name:f.name, raw:f.name, method:f.method, at:new Date(f.start), dur:f.dur, area:'イベント' }));
+  const allSteps = [...steps, ...fixSteps].sort((a,b)=> a.at - b.at);
+  planOut.textContent = allSteps.map(s=> s.at.toTimeString().slice(0,5) + ' ' + s.method + ' → ' + s.name + '（' + s.dur + '分） [' + s.area + ']').join('\n');
+  const sched = { user_id:(await supabase.auth.getUser()).data.user.id, park_id:parseInt(parkSel.value,10), name:'手動スケジュール ' + new Date().toLocaleTimeString() };
+  const { data:sch, error:e1 } = await supabase.from('user_schedules').insert(sched).select('id,share_token').single();
+  if(e1) return alert(e1.message);
+  const items = allSteps.map((s,i)=>({ schedule_id:sch.id, order_no:i+1, attraction_name:s.raw, method:s.method, planned_time:s.at.toISOString(), duration_min:s.dur, area:s.area }));
+  const { error:e2 } = await supabase.from('user_schedule_items').insert(items);
+  if(e2) return alert(e2.message);
+  const url = new URL(location.href); url.searchParams.set('schedule', sch.share_token);
+  shareLink.innerHTML = '共有リンク： <a href="' + url.toString() + '">' + url.toString() + '</a>';
+};
+
+function renderCountsEditor(){
+  const favs = state.qt.filter(x=>state.favorites.has(x.nameRaw));
+  countsDiv.innerHTML='';
+  if(!favs.length){ countsDiv.textContent='★で施設を選ぶと回数指定できます。'; return; }
+  const grid = document.createElement('div'); grid.className='grid3';
+  for(const r of favs){
+    const area=areaOf(r.nameJa);
+    const row=document.createElement('div'); row.className='row';
+    row.appendChild(document.createTextNode(r.nameJa +'（'+area+'）'));
+    const inp=document.createElement('input'); inp.type='number'; inp.min='0'; inp.value='1'; inp.id='count-' + r.nameRaw; inp.className='w120';
+    row.appendChild(inp); grid.appendChild(row);
+  }
+  countsDiv.appendChild(grid);
+}
+
+async function loadParades(){
+  const parkId = parseInt(parkSel.value,10);
+  const { data, error } = await supabase.from('parades').select('*').eq('park_id', parkId).order('name');
+  const dl = document.getElementById('paradeNames'); dl.innerHTML = '';
+  (data||[]).forEach(p=> dl.appendChild(new Option('', p.name)));
+}
+
+async function loadShared(){
+  const sp = new URLSearchParams(location.search); const token = sp.get('schedule'); if(!token) return;
+  const { data:sch } = await supabase.from('user_schedules').select('id,name').eq('share_token', token).single();
+  if(!sch) return;
+  const { data:items } = await supabase.from('user_schedule_items').select('*').eq('schedule_id', sch.id).order('order_no');
+  planOut.textContent = '📎 共有スケジュール: ' + sch.name + '\n' + items.map(s=> new Date(s.planned_time).toTimeString().slice(0,5) + ' ' + s.method + ' → ' + s.attraction_name + '（' + s.duration_min + '分） [' + (s.area||'') + ']').join('\n');
+}
+
+async function loadFeed(){ 
+  const { data } = await supabase.from('notifications').select('*').order('created_at',{ascending:false}).limit(20); 
+  feedDiv.innerHTML=''; 
+  for(const n of data||[]){ 
+    const row=document.createElement('div'); 
+    row.className='row'; 
+    row.textContent='[' + new Date(n.created_at).toLocaleString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' }) + '] ' + n.title + ' - ' + n.body; 
+    feedDiv.prepend(row); 
+  } 
+}
+supabase.channel('feed').on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},p=>{ 
+  const row=document.createElement('div'); 
+  row.className='row'; 
+  row.textContent='[' + new Date(p.new.created_at).toLocaleTimeString() + '] ' + p.new.title + ' - ' + p.new.body; 
+  feedDiv.prepend(row); 
+}).subscribe();
+
+const btnNotify=document.getElementById('btnNotify');
+async function urlB64ToUint8Array(b){const p='='.repeat((4-b.length%4)%4);const base=(b+p).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base);const u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u;}
+btnNotify.onclick=async()=>{
+  if (!ENV.VAPID_PUBLIC_KEY) return alert('VAPID_PUBLIC_KEY未設定');
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isIOS && !isStandalone) { alert('iPhoneは「ホーム画面に追加」でインストール後に通知が有効化できます。'); return; }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted'){ alert('通知が許可されませんでした'); return; }
+
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: await urlB64ToUint8Array(ENV.VAPID_PUBLIC_KEY)
+  });
+
+  // 端末側の状態スナップショット（サーバが匿名配信するときに使う）
+  const parkId = parseInt(parkSel.value,10);
+  const favs   = [...(LS.readFavs(parkId) || [])];
+  const rules  = LS.readRules(parkId) || { notify_close_reopen:true, notify_dpa_sale:true, spike_threshold:20, window_minutes:10 };
+
+  const { data:{user}, error } = await supabase.auth.getUser();
+
+  const headers = { 'Content-Type':'application/json' };
+  let body = { device_id: deviceId, subscription: sub.toJSON(), park_id: parkId, favs, rules };
+
+  // ログイン中は従来通りBearer付きでもOK（互換）
+  if (!error && user) {
+    const { data:{ session } } = await supabase.auth.getSession();
+    if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+  }
+
+  const resp = await fetch('/.netlify/functions/push-subscribe', {
+    method:'POST', headers, body: JSON.stringify(body)
+  });
+
+  alert(resp.ok ? '通知を登録しました（端末）' : '通知登録に失敗しました');
+};
+
+// フィルタボタンのトグル表示
+document.getElementById('filterDpaOnly').onclick = function() {
+  this.classList.toggle('active');
+  fDpaOnly.checked = !fDpaOnly.checked;
+  renderQT();
+};
+document.getElementById('filterKids').onclick = function() {
+  this.classList.toggle('active');
+  fKids.checked = !fKids.checked;
+  renderQT();
+};
+document.getElementById('filterFavOnly').onclick = function() {
+  this.classList.toggle('active');
+  fFavOnly.checked = !fFavOnly.checked;
+  renderQT();
+};
+
+// ==== 運営/休止 相互排他トグル（堅牢版） ====
+// ラベルとinputの状態を双方向で同期させる
+function syncOpenClosedUI() {
+  if (fOpenOnly)  tgOpenOnly?.classList.toggle('active',  !!fOpenOnly.checked);
+  if (fClosedOnly)tgClosedOnly?.classList.toggle('active', !!fClosedOnly.checked);
+
+  // 相互排他：両方ONは許可しない
+  if (fOpenOnly?.checked && fClosedOnly?.checked) {
+    // 最後にONになった方を優先したいが、ここでは「open優先」でclosedを落とす
+    fClosedOnly.checked = false;
+    tgClosedOnly?.classList.remove('active');
+  }
+}
+
+// 1) ラベルをクリックしたとき（タップ含む）
+tgOpenOnly?.addEventListener('click', (e) => {
+  e.preventDefault(); // ラベルのデフォを抑制して自前でトグル
+  if (!fOpenOnly) return;
+  fOpenOnly.checked = !fOpenOnly.checked;
+  if (fOpenOnly.checked) { // 相互排他
+    fClosedOnly.checked = false;
+  }
+  syncOpenClosedUI();
+  renderQT();
+});
+
+tgClosedOnly?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!fClosedOnly) return;
+  fClosedOnly.checked = !fClosedOnly.checked;
+  if (fClosedOnly.checked) { // 相互排他
+    fOpenOnly.checked = false;
+  }
+  syncOpenClosedUI();
+  renderQT();
+});
+
+// 2) 入力(change)を直接操作された場合（キーボード/アクセシビリティ等）
+fOpenOnly?.addEventListener('change', () => {
+  if (fOpenOnly.checked) fClosedOnly.checked = false;
+  syncOpenClosedUI();
+  renderQT();
+});
+fClosedOnly?.addEventListener('change', () => {
+  if (fClosedOnly.checked) fOpenOnly.checked = false;
+  syncOpenClosedUI();
+  renderQT();
+});
+
+// 3) 初期同期（ページロード直後・パーク切替後など）
+syncOpenClosedUI();
+
+// クイックフィルタ
+btnQuickEasy.onclick = () => { fMaxWait.value = 20; renderQT(); };
+btnQuickFavDpa.onclick = () => {
+  fFavOnly.checked = true; document.getElementById('filterFavOnly').classList.add('active');
+  fDpaOnSale.checked = true;
+  loadDPA(); renderQT();
+};
+
+// エリア変更
+areaSel.onchange = () => renderQT();
+
+// DPA 並び順
+if (sortByDpa) sortByDpa.onchange = () => loadDPA();
+
+// タブ（上部）のスクロール & 強調
+document.querySelectorAll('#topTabs .tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#topTabs .tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.target;
+    let targetEl=null;
+    if (t==='qt')       targetEl = document.querySelector('.panel:has(#qt)');
+    if (t==='dpa')      targetEl = document.querySelector('.panel:has(#dpa)');
+    if (t==='favs')     targetEl = document.querySelector('.panel:has(#favs)');
+    if (t==='schedule') targetEl = document.querySelector('.panel:has(#planOut)');
+    if (targetEl) targetEl.scrollIntoView({ behavior:'smooth', block:'start' });
+  });
+});
+
+// 下部ナビのアクティブ強調
+document.querySelectorAll('.bottom-nav .nav-item').forEach(item=>{
+  item.addEventListener('click', function(){
+    document.querySelectorAll('.bottom-nav .nav-item').forEach(i=>i.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+
+// 初期状態設定
+if (fDpaOnly.checked) document.getElementById('filterDpaOnly').classList.add('active');
+if (fKids.checked) document.getElementById('filterKids').classList.add('active');
+if (fFavOnly.checked) document.getElementById('filterFavOnly').classList.add('active');
+
+// モバイルナビゲーション
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', function() {
+    const target = this.dataset.target;
+    let scrollTarget;
+    
+    switch(target) {
+      case 'qt':
+        scrollTarget = document.querySelector('.panel:has(#qt)');
+        break;
+      case 'dpa':
+        scrollTarget = document.querySelector('.panel:has(#dpa)');
+        break;
+      case 'favs':
+        scrollTarget = document.querySelector('.panel:has(#favs)');
+        break;
+      case 'schedule':
+        scrollTarget = document.querySelector('.panel:has(#planOut)');
+        break;
+    }
+    
+    if (scrollTarget) {
+      scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// 手動更新ボタン（待ち時間のみ）
+document.getElementById('btnRefresh').onclick = async ()=>{ await loadQT(true); };
+parkSel.onchange = async () => {
+  await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades();
+  renderEvents(); await renderNowTips(); await loadPresets();
+  populateAreas(); areaSel.value = ''; // 追加
+};
+
+
+// DPAフィルタのイベント
+fFavOnlyDpa.onchange = fDpaOnSale.onchange = fPpOnSale.onchange = () => loadDPA();
+document.getElementById('fShowAllDpa').onchange = () => loadDPA();
+fMaxWait.onchange = sortBy.onchange = () => renderQT();
+
+let autoTimer=null, dpaTimer=null;
+const autoRefresh = document.getElementById('autoRefresh');
+function startAuto(){
+  stopAuto();
+  // 待ち時間（Queue-Times）を 90 秒ごと
+  autoTimer = setInterval(() => loadQT(false).catch(()=>{}), 90_000);
+
+  // DPA/PP を 30 秒ごと
+  dpaTimer  = setInterval(() => loadDPA().catch(()=>{}), 30_000);
+
+  // 初回即時ロード
+  loadQT(false).catch(()=>{});
+  loadDPA().catch(()=>{});
+}
+function stopAuto(){ if (autoTimer){ clearInterval(autoTimer); autoTimer=null; } if (dpaTimer){ clearInterval(dpaTimer); dpaTimer=null; } }
+autoRefresh.onchange = ()=> autoRefresh.checked ? startAuto() : stopAuto();
+document.addEventListener('visibilitychange', ()=>{ if (document.hidden) stopAuto(); else if (autoRefresh.checked) startAuto(); });
+if (autoRefresh.checked) startAuto();
+
+// プルリフレッシュ実装
+let pullStartY = 0;
+let pullDistance = 0;
+let isPulling = false;
+const pullThreshold = 100;
+const pullMax = 150;
+const pullRefreshEl = document.getElementById('pullRefresh');
+const pullTextEl = document.getElementById('pullText');
+const pullSpinnerEl = document.getElementById('pullSpinner');
+
+document.addEventListener('touchstart', (e) => {
+  if (window.scrollY === 0 && !isPulling) {
+    pullStartY = e.touches[0].pageY;
+    pullRefreshEl.classList.add('pulling');
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (pullStartY > 0 && !isPulling) {
+    pullDistance = Math.min(e.touches[0].pageY - pullStartY, pullMax);
+    
+    if (pullDistance > 0 && window.scrollY === 0) {
+      e.preventDefault();
+      
+      pullRefreshEl.style.transform = 'translateY(' + pullDistance + 'px)';
+      
+      if (pullDistance > pullThreshold) {
+        pullTextEl.textContent = '離して更新';
+      } else {
+        pullTextEl.textContent = '下に引っ張って更新';
+      }
+    }
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', async (e) => {
+  if (pullDistance > pullThreshold && !isPulling) {
+    isPulling = true;
+    pullRefreshEl.classList.remove('pulling');
+    pullRefreshEl.classList.add('show');
+    pullTextEl.textContent = '更新中...';
+    pullSpinnerEl.style.display = 'block';
+    
+    try {
+      await Promise.all([
+        loadQT(true),
+        loadDPA(),
+        loadFeed()
+      ]);
+    } catch (error) {
+      console.error('更新エラー:', error);
+    }
+    
+    pullTextEl.textContent = '更新完了！';
+    setTimeout(() => {
+      pullRefreshEl.classList.remove('show');
+      pullRefreshEl.style.transform = '';
+      pullSpinnerEl.style.display = 'none';
+      pullTextEl.textContent = '下に引っ張って更新';
+      isPulling = false;
+    }, 1000);
+  } else {
+    pullRefreshEl.style.transform = '';
+    pullRefreshEl.classList.remove('pulling');
+  }
+  
+  pullStartY = 0;
+  pullDistance = 0;
+});
+// DPA取り込みを手動でキック（約15秒後に最新を表示）
+const btnFetchDpa = document.getElementById('btnFetchDpa');
+if (btnFetchDpa) {
+  btnFetchDpa.onclick = async () => {
+    try {
+      btnFetchDpa.disabled = true;
+      const prev = btnFetchDpa.textContent;
+      btnFetchDpa.textContent = '取得中…（約15秒）';
+      // 背景関数をPOSTで起動（すぐ 202 が返る）
+      await fetch('/.netlify/functions/ingest-tdr-dpa-background', { method: 'POST' }).catch(()=>{});
+      // 取り込み完了を待つ（15秒後に最新を読む）
+      await new Promise(r => setTimeout(r, 15000));
+      await loadDPA(); // ← 既存のDPAテーブル再描画関数（app.htmlに実装済み）
+      btnFetchDpa.textContent = prev;
+    } finally {
+      btnFetchDpa.disabled = false;
+    }
+  };
+}
+
+// ===== 今日の販売タイムライン（8:00–21:00 / 15分刻み） =====
+
+// DOM 参照（既に存在する要素）
+const tlDiv      = document.getElementById('timeline');
+const tlKindSel  = document.getElementById('tlKind');
+const tlUpdated  = document.getElementById('tlUpdated');
+
+// 8:00〜21:00 の 15分スロットを JST で生成
+function* tlSlots(startHour=8, endHour=21, step=15){
+  const tz = 'Asia/Tokyo';
+  const base = new Date();
+  const s = new Date(base.toLocaleString('en-US',{ timeZone: tz }));
+  s.setHours(startHour,0,0,0);
+  const e = new Date(base.toLocaleString('en-US',{ timeZone: tz }));
+  e.setHours(endHour,0,0,0);
+  for (let t=new Date(s); t<e; t=new Date(t.getTime()+step*60000)) {
+    yield [new Date(t), new Date(t.getTime()+step*60000)];
+  }
+}
+const overlap = (a1,a2,b1,b2)=> a1<b2 && b1<a2;
+
+// Supabase（マテビュー）から区間を取得して表に描画
+async function loadTimeline(){
+  const kind   = tlKindSel?.value || 'dpa';
+  const table  = (kind === 'dpa') ? 'v_dpa_sessions_today_mv' : 'v_pp_sessions_today_mv';
+
+  // ← ここだけ追加：274/275(ランド/シー) → 1/2 に合わせる
+  const qtParkId = parseInt(parkSel.value || '274', 10);
+  const sessionParkId = (qtParkId === 274 ? 1 : qtParkId === 275 ? 2 : qtParkId);
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('park_id,name_ja,jst_start,jst_end')
+    .eq('park_id', sessionParkId)     // ← ここを sessionParkId に
+    .order('name_ja', { ascending:true })
+    .order('jst_start', { ascending:true });
+
+  if (error) { tlDiv.textContent = error.message; return; }
+  renderTimeline(data || []);
+}
+
+function renderTimeline(rows){
+  const names  = [...new Set(rows.map(r=>r.name_ja))];
+  const byName = Object.fromEntries(names.map(n => [n, rows.filter(r=>r.name_ja===n)]));
+
+  const tbl = document.createElement('table'); tbl.className='timeline';
+
+  // ヘッダ
+  const thead = document.createElement('thead');
+  const thr   = document.createElement('tr'); thr.className='head';
+  thr.appendChild(Object.assign(document.createElement('th'), {textContent:'時刻'}));
+  for (const n of names) thr.appendChild(Object.assign(document.createElement('th'), {textContent:n}));
+  thead.appendChild(thr); tbl.appendChild(thead);
+
+  // 本体（8:00〜21:00 / 15分）
+  const tbody = document.createElement('tbody');
+  for (const [slotS, slotE] of tlSlots(8,21,15)) {
+    const tr    = document.createElement('tr');
+    const tdT   = document.createElement('td');
+    tdT.textContent = slotS.toLocaleTimeString('ja-JP',{ timeZone:'Asia/Tokyo', hour:'2-digit', minute:'2-digit', hour12:false });
+    tr.appendChild(tdT);
+
+    for (const n of names) {
+      const td  = document.createElement('td');
+      const on  = (byName[n]||[]).some(s => overlap(new Date(s.jst_start), new Date(s.jst_end), slotS, slotE));
+      td.className  = on ? 'on' : 'off';
+      td.textContent= on ? '●' : '';
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);
+
+  const tlWrap = document.getElementById('timelineWrap') || tlDiv; // ラッパが無ければ従来通り
+  tlDiv.innerHTML = '';
+  tlWrap.innerHTML = '';            // ← ラッパ内をクリア
+  tlWrap.appendChild(tbl);          // ← ラッパにテーブルを入れる
+  tlUpdated.textContent = '更新: ' + new Date().toLocaleTimeString('ja-JP',{ timeZone:'Asia/Tokyo', hour12:false });
+}
+
+// イベント & 自動更新（1分ごと）
+tlKindSel?.addEventListener('change', loadTimeline);
+parkSel?.addEventListener('change', loadTimeline);
+
+let tlTimer = null;
+function startTimelineAuto(){
+  if (tlTimer) clearInterval(tlTimer);
+  loadTimeline().catch(()=>{});
+  tlTimer = setInterval(()=> loadTimeline().catch(()=>{}), 60_000);
+}
+
+// マウスドラッグで横スクロール（任意）
+(function enableDragScroll(){
+  const wrap = document.getElementById('timelineWrap');
+  if (!wrap) return;
+  let isDown=false, startX=0, scrollLeft=0;
+  wrap.addEventListener('mousedown', (e)=>{
+    isDown=true; wrap.classList.add('dragging');
+    startX = e.pageX - wrap.offsetLeft;
+    scrollLeft = wrap.scrollLeft;
+  });
+  ['mouseleave','mouseup'].forEach(ev=>wrap.addEventListener(ev,()=>{ isDown=false; wrap.classList.remove('dragging'); }));
+  wrap.addEventListener('mousemove', (e)=>{
+    if(!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - wrap.offsetLeft;
+    const walk = (x - startX) * 1; // 速度係数
+    wrap.scrollLeft = scrollLeft - walk;
+  });
+})();
+// 任意の table[data-hscroll] を自動で <div class="hscroll"> で包み、横スクロール化
+function enableHScroll(root = document){
+  root.querySelectorAll('table[data-hscroll]').forEach(tbl => {
+    if (tbl.closest('.hscroll')) return;           // 既に包まれていれば何もしない
+    const wrap = document.createElement('div');
+    wrap.className = 'hscroll';
+    tbl.parentNode.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
+    tbl.classList.add('hscroll-table');
+    if (tbl.dataset.stickyFirst === '1') tbl.classList.add('sticky-first');
+  });
+}
+
+// 初期読み込み
+await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas(); startTimelineAuto();
+</script>
 </body>
 </html>
