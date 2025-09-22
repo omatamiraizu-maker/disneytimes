@@ -10,9 +10,9 @@ const {
   PUSHOVER_TOKEN,
 } = process.env;
 
-// JSTの通知時間帯
-const START_HOUR_JST = 8;   // 08:00〜
-const END_HOUR_JST   = 21;  // 21:59まで（22:00以降は抑止）
+// 通知許可の時間帯（JST）
+const START_HOUR_JST = 8;   // 8:00〜
+const END_HOUR_JST   = 21;  // 21:59 まで
 
 webpush.setVapidDetails('mailto:notify@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
@@ -25,7 +25,12 @@ const inQuietHours = () => {
   return !(h >= START_HOUR_JST && h <= END_HOUR_JST);
 };
 
-// 通知送信
+// ステータス正規化＆アクティブ判定
+const norm = (s) => (s ?? '').trim();
+const isDpaActive = (s) => norm(s) === '販売中';
+const isPpActive  = (s) => norm(s) === '発行中';
+
+// 送信処理
 async function sendWebPush(sb, subs, title, body, url = '/') {
   if (!subs.length) return;
   await sb.from('notifications').insert({ title, body }).catch(() => {});
@@ -36,6 +41,8 @@ async function sendWebPush(sb, subs, title, body, url = '/') {
     } catch (err) {
       if (err?.statusCode === 410 || err?.statusCode === 404) {
         await sb.from('push_subscriptions').delete().eq('endpoint', s.endpoint).catch(()=>{});
+      } else {
+        console.warn('webpush error:', err?.statusCode, err?.message);
       }
     }
   }
@@ -43,28 +50,12 @@ async function sendWebPush(sb, subs, title, body, url = '/') {
 async function sendPushover(title, message, url = '/', token, users) {
   if (!token || !users.length) return;
   for (const user of users) {
-    const body = new URLSearchParams({
-      token, user, title, message, url, url_title: '開く', priority: '0'
-    });
+    const body = new URLSearchParams({ token, user, title, message, url, url_title: '開く', priority: '0' });
     try {
       await fetch('https://api.pushover.net/1/messages.json', {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
       });
     } catch (_) {}
-  }
-}
-
-// メッセージ生成（nameは正規化済みの日本語名）
-function buildMessage(ev) {
-  const n = ev.name_raw;
-  switch (`${ev.kind}:${ev.event}`) {
-    case 'open:reopen':   return { title: `${n} が再開`,         body: `状態: 休止 → 運営中` };
-    case 'open:close':    return { title: `${n} が休止`,         body: `状態: 運営中 → 休止` };
-    case 'dpa:dpa_start': return { title: `${n}：DPA販売開始`,   body: `DPAが販売中になりました` };
-    case 'dpa:dpa_end':   return { title: `${n}：DPA販売終了`,   body: `DPAが販売終了/非販売になりました` };
-    case 'pp:pp_start':   return { title: `${n}：PP発行開始`,    body: `PPが発行中になりました` };
-    case 'pp:pp_end':     return { title: `${n}：PP発行終了`,    body: `PPが発行終了/非発行になりました` };
-    default: return null;
   }
 }
 
@@ -76,6 +67,7 @@ export async function handler(event) {
     const forced = url.searchParams.get('force') === '1';
     const jstNow = nowInJST();
 
+    // JST時間帯外はスキップ（?force=1 なら実行）
     if (!forced && inQuietHours()) {
       return {
         statusCode: 200,
@@ -93,36 +85,72 @@ export async function handler(event) {
     const { data: poProfiles } = await sb.from('pushover_profiles').select('user_key');
     const poUsers = [...new Set((poProfiles || []).map(p => p.user_key).filter(Boolean))];
 
-    // === 変更点：イベントキューから未送だけ取得 ===
-    const { data: events, error: eEv } = await sb
-      .from('event_queue')
-      .select('id, kind, park_id, name_raw, event, changed_at')
-      .is('sent_at', null)
-      .order('changed_at', { ascending: true });
-    if (eEv) {
-      console.warn('event_queue:', eEv.message);
-      return { statusCode: 500, body: 'event query error' };
+    // 変化フラグのみ
+    const { data: changed, error: eChg } = await sb
+      .from('attraction_state')
+      .select('id,park_id,name_ja,inopen_bef,inopen_now,dpastatus_bef,dpastatus_now,ppstatus_bef,ppstatus_now,has_changed')
+      .eq('has_changed', true);
+    if (eChg) {
+      console.warn('attraction_state query error:', eChg.message);
+      return { statusCode: 500, body: 'query error' };
     }
 
-    let openCnt = 0, dpaCnt = 0, ppCnt = 0;
-    const sentIds = [];
+    let openNotificationCount = 0;
+    let dpaNotificationCount  = 0;
 
-    for (const ev of (events || [])) {
-      const msg = buildMessage(ev);
-      if (!msg) continue;
+    for (const r of (changed || [])) {
+      // 休止/再開
+      if ((r.inopen_bef ?? null) !== (r.inopen_now ?? null)) {
+        const was = r.inopen_bef ? '運営中' : '休止';
+        const now = r.inopen_now ? '運営中' : '休止';
+        const title = `${r.name_ja} が${r.inopen_now ? '再開' : '休止'}`;
+        const body  = `状態: ${was} → ${now}`;
+        await sendWebPush(sb, pushSubs, title, body, '/');
+        await sendPushover(title, body, '/', PUSHOVER_TOKEN, poUsers);
+        openNotificationCount++;
+      }
 
-      await sendWebPush(sb, pushSubs, msg.title, msg.body, '/');
-      await sendPushover(msg.title, msg.body, '/', PUSHOVER_TOKEN, poUsers);
+      // DPA：販売中の境界出入りのみ（販売開始/販売終了/再販）
+      {
+        const wasActive = isDpaActive(r.dpastatus_bef);
+        const nowActive = isDpaActive(r.dpastatus_now);
+        if (wasActive !== nowActive) {
+          const title = `${r.name_ja}：DPA${nowActive ? '販売開始' : '販売終了'}`;
+          const body  = `DPA: ${r.dpastatus_bef || '-'} → ${r.dpastatus_now || '-'}`;
+          await sendWebPush(sb, pushSubs, title, body, '/');
+          await sendPushover(title, body, '/', PUSHOVER_TOKEN, poUsers);
+          dpaNotificationCount++;
+        }
+      }
 
-      sentIds.push(ev.id);
-      if (ev.kind === 'open') openCnt++;
-      if (ev.kind === 'dpa')  dpaCnt++;
-      if (ev.kind === 'pp')   ppCnt++;
+      // PP：発行中の境界出入りのみ（発行開始/発行終了/再開）
+      {
+        const wasActive = isPpActive(r.ppstatus_bef);
+        const nowActive = isPpActive(r.ppstatus_now);
+        if (wasActive !== nowActive) {
+          const title = `${r.name_ja}：PP${nowActive ? '発行開始' : '発行終了'}`;
+          const body  = `PP: ${r.ppstatus_bef || '-'} → ${r.ppstatus_now || '-'}`;
+          await sendWebPush(sb, pushSubs, title, body, '/');
+          await sendPushover(title, body, '/', PUSHOVER_TOKEN, poUsers);
+          dpaNotificationCount++;
+        }
+      }
     }
 
-    // 送信済みを確定
-    if (sentIds.length) {
-      await sb.from('event_queue').update({ sent_at: new Date().toISOString() }).in('id', sentIds);
+    // 同期（bef=now & フラグ解除）
+    let finalized = false;
+    try { await sb.rpc('notify_finalize_reset'); finalized = true; } catch (e) {
+      console.warn('notify_finalize_reset RPC failed, fallback to per-row updates.', e?.message);
+    }
+    if (!finalized && (changed?.length || 0) > 0) {
+      for (const r of changed) {
+        await sb.from('attraction_state').update({
+          inopen_bef: r.inopen_now,
+          dpastatus_bef: r.dpastatus_now,
+          ppstatus_bef: r.ppstatus_now,
+          has_changed: false,
+        }).eq('id', r.id).catch(()=>{});
+      }
     }
 
     return {
@@ -131,9 +159,9 @@ export async function handler(event) {
         ok: true,
         window: { jst_now_iso: jstNow.toISOString(), allowed_hours: '08:00–21:59 JST', forced },
         notifications: {
-          open_close: openCnt,
-          dpa_pp: dpaCnt + ppCnt,
-          total: openCnt + dpaCnt + ppCnt
+          open_close: openNotificationCount,
+          dpa_pp: dpaNotificationCount,
+          total: openNotificationCount + dpaNotificationCount
         }
       })
     };
