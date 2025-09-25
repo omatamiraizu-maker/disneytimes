@@ -7,4 +7,8 @@
   node_bundler = "esbuild"
   external_node_modules = ["@supabase/supabase-js","web-push"]
 
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
 
