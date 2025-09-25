@@ -898,6 +898,43 @@ const LS = {
   },
   writeRules(park, obj){ safeStorage.setItem(this.rulesKey(park), JSON.stringify(obj||{})); }
 };
+
+const VAPID_PUBLIC_KEY = "BB4nzfXHR4VZfr1TvbaH6K34iB7nANgALqtOQBK_I3gpswFAJl-8nOQav2bg6qC8Wx5nqutNYe51JGAMncfM4n8"; // Base64URL
+
+function urlBase64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+(async () => {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  // 1) SW登録（/sw.js はサイト直下に置く）
+  const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+
+  // 2) 通知許可
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { console.warn('Notification not granted'); return; }
+
+  // 3) 購読取得/作成（applicationServerKey は必ず Uint8Array）
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+  }
+
+  // 4) サーバに保存
+  const res = await fetch('/.netlify/functions/push-subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscription: sub })
+  });
+  console.log('push-subscribe:', await res.text());
+})();
   
 // Elements
 const parkSel = document.getElementById('park');
