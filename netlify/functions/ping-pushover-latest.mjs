@@ -1,4 +1,3 @@
-import fetch from 'node-fetch'; // Node18でも安定させたいので明示
 export async function handler() {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, PUSHOVER_TOKEN } = process.env;
   if (!PUSHOVER_TOKEN) return { statusCode: 500, body: 'PUSHOVER_TOKEN missing' };
