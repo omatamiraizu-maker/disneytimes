@@ -567,10 +567,30 @@
     <div class="row">
       <label class="pill"><input type="checkbox" id="rCloseReopen" checked> 休止/再開</label>
       <label class="pill"><input type="checkbox" id="rDpaSale" checked> DPA販売の変化（開始/終了）</label>
-      <label class="pill">スパイク閾値（急変判定幅）±<input type="number" id="rSpike" value="20" class="w120"> 分</label>
-      <label class="pill">DPA開始の <input type="number" id="rWindow" value="10" class="w120"> 分前に通知</label>
+      <label class="pill">スパイク閾値（急変判定幅）±
+        <input type="number" id="rSpike" value="20" class="w120"> 分
+      </label>
+      <label class="pill">DPA開始の
+        <input type="number" id="rWindow" value="10" class="w120"> 分前に通知
+      </label>
       <button id="btnSaveRules" class="cta">保存</button>
+  
+      <label class="pill">通知対象
+        <select id="notifyScopeSel">
+          <option value="favorites">お気に入りのみ</option>
+          <option value="all">全体（全アトラクション）</option>
+        </select>
+      </label>
+  
+      <label class="pill">
+        <input type="checkbox" id="muteOpenCloseChk">
+        開園/閉園の一斉Open/Closeをミュート
+      </label>
+  
+      <button id="btnSaveDeviceRules" class="cta">通知設定を保存</button>
+      <span class="mut">※端末ごとに保存されます（パーク別）</span>
     </div>
+  
     <div class="row" style="margin-top:8px">
       <label class="pill">Pushover User Key</label>
       <input id="poKey" placeholder="例：uQiRzpo4DXghDmr9QzzfQu27cmVRsG" style="min-width:320px">
@@ -579,6 +599,7 @@
       <span class="mut">※登録するとネイティブ通知も受け取れます</span>
     </div>
   </section>
+
 
   <section class="panel">
     <h3 style="margin-top:0">⭐ お気に入り / プリセット</h3>
@@ -771,9 +792,39 @@ const poKey = document.getElementById('poKey');
 const poLabel = document.getElementById('poLabel');
 const btnSavePushover = document.getElementById('btnSavePushover');
 
+const notifyScopeSel   = document.getElementById('notifyScopeSel');
+const muteOpenCloseChk = document.getElementById('muteOpenCloseChk');
+const btnSaveDeviceRules = document.getElementById('btnSaveDeviceRules');
+  
 document.getElementById('btnCloseLogin').onclick = () => loginModal.classList.remove('on');
 btnLogout.onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 
+async function loadDeviceRules() {
+  const parkId = parseInt(parkSel.value, 10);
+  // device_id ベース優先で読む（未ログインでも使える）
+  const { data } = await supabase
+    .from('device_alert_rules')
+    .select('*')
+    .eq('device_id', deviceId)
+    .eq('park_id', parkId)
+    .maybeSingle();
+  const r = data || {};
+  notifyScopeSel.value     = r.notify_mode || 'favorites';
+  muteOpenCloseChk.checked = !!r.mute_open_close_waves;
+}
+btnSaveDeviceRules.onclick = async () => {
+  const parkId = parseInt(parkSel.value, 10);
+  const row = {
+    device_id: deviceId,
+    park_id: parkId,
+    notify_mode: notifyScopeSel.value,
+    mute_open_close_waves: !!muteOpenCloseChk.checked
+  };
+  const { error } = await supabase.from('device_alert_rules').upsert(row, { onConflict: 'device_id,park_id' });
+  if (error) return alert('保存失敗: ' + error.message);
+  alert('通知設定を保存しました');
+};
+  
 // Pushover の User Key を保存（ログイン時= user_id / 未ログイン= device_id）
 async function savePushoverKey() {
   const key = (poKey?.value || '').trim();
@@ -1962,11 +2013,6 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 // 手動更新ボタン（待ち時間のみ）
 document.getElementById('btnRefresh').onclick = async ()=>{ await loadQT(true); };
-parkSel.onchange = async () => {
-  await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades();
-  renderEvents(); await renderNowTips(); await loadPresets();
-  populateAreas(); areaSel.value = ''; // 追加
-};
 
 
 // DPAフィルタのイベント
@@ -2206,7 +2252,32 @@ function enableHScroll(root = document){
 }
 
 // 初期読み込み
-await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas(); startTimelineAuto();
+await loadShared(); await loadRules(); await loadFavs(); await loadQT(); await loadDPA(); await loadPurchases(); await loadParades(); renderEvents(); await renderNowTips(); await loadFeed(); await loadPresets(); populateAreas(); startTimelineAuto(); await loadDeviceRules();
+// ここから：パーク選択変更の統合ハンドラ（1か所定義）
+async function handleParkChange() {
+  // 端末ルール（お気に入り/全体、オープン/クローズ波ミュート）
+  await loadDeviceRules();
+
+  // 通常の再読込フロー
+  await loadRules();
+  await loadFavs();
+  await loadQT();
+  await loadDPA();
+  await loadPurchases();
+  await loadParades();
+  renderEvents();
+  await renderNowTips();
+  await loadPresets();
+
+  // UI補助
+  populateAreas();
+  areaSel.value = '';
+  // タイムラインは既に別 addEventListener で parkSel 変更に反応するので触らなくてOK
+}
+
+// 1回だけ登録（重複防止）
+parkSel.addEventListener('change', handleParkChange);
+
 </script>
 </body>
 </html>
