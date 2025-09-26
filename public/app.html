@@ -959,33 +959,73 @@ function urlBase64ToUint8Array(b64) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
+// --- push 購読登録 & サーバ保存（device_id 同梱版） ---
 (async () => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-  // 1) SW登録（/sw.js はサイト直下に置く）
+  // 1) SW登録
   const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
 
   // 2) 通知許可
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') { console.warn('Notification not granted'); return; }
 
-  // 3) 購読取得/作成（applicationServerKey は必ず Uint8Array）
+  // 3) 購読取得/作成
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
+    // VAPID_PUBLIC_KEY はあなたのコードで window.ENV などから渡してもOK
+    const keyB64 = (window.ENV?.VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY);
+    const appServerKey = urlBase64ToUint8Array(keyB64);
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
   }
 
-  // 4) サーバに保存
+  // 4) 端末スナップショット
+  const parkId = parseInt(document.getElementById('park')?.value || '274', 10);
+  const favs   = [...(LS?.readFavs?.(parkId) || [])];
+  const rules  = LS?.readRules?.(parkId) || {
+    notify_close_reopen: true,
+    notify_dpa_sale: true,
+    spike_threshold: 20,
+    window_minutes: 10,
+  };
+
+  // 5) device_id（定義が無い環境でも安全に）
+  let did = (typeof deviceId !== 'undefined' && deviceId) ? deviceId : null;
+  try {
+    if (!did) {
+      const KEY = 'tdr-device-id';
+      const gen = () => (crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+        const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
+      }));
+      const st = (window.safeStorage || localStorage);
+      did = st.getItem(KEY) || (st.setItem(KEY, gen()), st.getItem(KEY));
+    }
+  } catch {}
+
+  // 6) サーバに保存（device_id 同梱）
+  const body = {
+    device_id: did,
+    subscription: sub.toJSON(),
+    park_id: parkId,
+    favs,
+    rules,
+  };
+
+  const headers = { 'Content-Type': 'application/json' };
+  // ログイン中なら Bearer を付与（任意）
+  try {
+    const { data:{ session } } = await supabase.auth.getSession();
+    if (session?.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+  } catch {}
+
   const res = await fetch('/.netlify/functions/push-subscribe', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subscription: sub })
+    headers,
+    body: JSON.stringify(body),
   });
   console.log('push-subscribe:', await res.text());
 })();
+
   
 // Elements
 const parkSel = document.getElementById('park');
